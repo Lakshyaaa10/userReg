@@ -19,9 +19,7 @@ exports.createUser = async (req, res) => {
             
             Helper.response("Success","User Created Successfully",{},res,200); 
 
-            if (user) {
-                res.send("User Created");
-            }
+          
         }
     } catch (error) {
         console.log(error);
