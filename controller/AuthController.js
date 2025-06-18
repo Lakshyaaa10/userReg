@@ -33,7 +33,7 @@ exports.Login = async(req,res)=>{
            return  Helper.response("Failed","Please provide Username and Password",{},res,200)
         }
         const user = await userModel.findOne( { username: username} );
-        console.log(user)
+
         if (user && user.password==password){
            
             let token= jwt.sign({ id:user._id }, process.env.SECRET_KEY, {
@@ -52,5 +52,10 @@ exports.Login = async(req,res)=>{
                 );
               })
         }
-    }catch(err){}
+        else{
+            Helper.response("Success","No User Found",{},res,200)
+        }
+    }catch(err){
+        console.log(err)
+    }
 }
