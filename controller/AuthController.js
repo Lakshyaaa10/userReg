@@ -62,7 +62,7 @@ exports.Login = async(req,res)=>{
               })
         }
         else{
-            Helper.response("Success","No User Found",{},res,200)
+            Helper.response("Failed","No User Found",{},res,200)
         }
     }catch(err){
         console.log(err)
