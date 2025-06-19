@@ -3,10 +3,10 @@ const { type } = require('express/lib/response')
 const mongoose = require("mongoose");
 
 const Users = new mongoose.Schema({
-    username:{
-        type:String,
+    mobile:{
+        type:Number,
         required:true,
-        
+        unique:true
     },
     createdAt:{
         type:Date,
