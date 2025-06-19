@@ -4,37 +4,46 @@ const Helper =require('../Helper/Helper')
 const jwt = require('jsonwebtoken')
 exports.createUser = async (req, res) => {
     try {
-        const { username, password } = req.body;
+        const { mobile, password, email } = req.body;
 
-        if (!username || !password) {
-            res.send("Username and password are required");
-        } else {
-           
-            var new_user = new userModel({
-                username:username,
-                password:password,
-                email:req.body.email?req.body.email:""
-            })
-            let user = await new_user.save()
-            
-            Helper.response("Success","User Created Successfully",{},res,200); 
-
-          
+        if (!mobile || !password || !email) {
+            return res.status(400).send("Mobile number, email, and password are required");
         }
+
+        
+        const existingUser = await userModel.findOne({
+            $or: [{ mobile }, { email }]
+        });
+
+        if (existingUser) {
+            return Helper.response("Failed", "Mobile or Email already in use", {}, res, 409);
+        }
+
+       
+        const newUser = new userModel({
+            mobile,
+            password,
+            email
+        });
+
+        const savedUser = await newUser.save();
+
+        return Helper.response("Success", "User Created Successfully", { userId: savedUser._id }, res, 201);
+
     } catch (error) {
-        console.log(error);
-        res.status(500).send("Internal Server Error");
+        console.error(error);
+        return res.status(500).send("Internal Server Error");
     }
 };
 exports.Login = async(req,res)=>{
     try{
-        const {username,password}=req.body;
-        if(!username||!password){
+        const {mobile,password}=req.body;
+        if(!mobile||!password){
            return  Helper.response("Failed","Please provide Username and Password",{},res,200)
         }
-        const user = await userModel.findOne( { username: username} );
+        const user = await userModel.findOne( { mobile: mobile} );
 
-        if (user && user.password==password){
+        if (user && user.password===password){
            
             let token= jwt.sign({ id:user._id }, process.env.SECRET_KEY, {
                 expiresIn: "50m",
