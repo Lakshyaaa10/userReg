@@ -11,6 +11,9 @@ AuthRoutes.get("/test",(req,res)=>{
 AuthRoutes.post('/login',(req,res,next)=>{
     Auth.Login(req,res,next)
 })
+AuthRoutes.post('/logout',(req,res,next)=>{
+    Auth.Logout(req,res,next)
+})
 
 module.exports = AuthRoutes
 
