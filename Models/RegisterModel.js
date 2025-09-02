@@ -1,0 +1,92 @@
+const mongoose = require('mongoose');
+
+const RegisterSchema = new mongoose.Schema({
+    Name: {
+        type: String,
+        required: true,
+        unique: true // Assuming each lister name should be unique
+    },
+    Age: {
+        type: Number,
+        required: true
+    },
+    Address: {
+        type: String,
+        required: true
+    },
+    Landmark: {
+        type: String,
+        required: false ,
+        default:""// Landmark is typically optional
+    },
+    Pincode: {
+        type: String, // Pincodes can start with 0, so String is safer
+        required: true
+    },
+    City: {
+        type: String,
+        required: true
+    },
+    State: {
+        type: String,
+        required: true
+    },
+    ContactNo: {
+        type: String, // Storing as string to handle various formats (e.g., with country codes, spaces)
+        required: true,
+        unique: true // Assuming contact numbers should be unique for each registration
+    },
+    VehiclePhoto: {
+        type: String, // Stores the URL or path to the uploaded photo
+        required: false // Often uploaded files are handled separately or might be optional
+    },
+    AddressProof: {
+        type: String, // Stores the URL or path to the uploaded address proof
+        required: false
+    },
+    VehicleRC: {
+        type: String, // Stores the URL or path to the uploaded vehicle RC
+        required: false
+    },
+    PollutionCertificate: {
+        type: String, // Stores the URL or path to the uploaded pollution certificate
+        required: false
+    },
+    VehicleModel: {
+        type: String,
+        required: true
+    },
+    ReturnDuration: {
+        type: String, // Could be a date string, or a specific duration format
+        required: true
+    },
+    // Optional: Add a field for the "I have read and agree to the terms and conditions." checkbox
+    AgreedToTerms: {
+        type: Boolean,
+        required: true,
+        default: false
+    },
+    // Optional: Timestamps for when the entry was created/updated
+    createdAt: {
+        type: Date,
+        default: Date.now
+    },
+    updatedAt: {
+        type: Date,
+        default: Date.now
+    },
+    vehicleType:{
+        type:String,
+        default:""
+    }
+});
+
+// Add a pre-save hook to update the updatedAt field
+RegisterSchema.pre('save', function (next) {
+    this.updatedAt = Date.now();
+    next();
+});
+
+const Register = mongoose.model('Register', RegisterSchema);
+
+module.exports = Register;
