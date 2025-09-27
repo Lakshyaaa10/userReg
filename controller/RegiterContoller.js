@@ -18,6 +18,8 @@ RegisterController.registerVehicle = async (req, res) => {
       returnDuration,
       agreed,
       vehicleType,
+      latitude,
+      longitude,
     } = req.body;
     const vehiclePhoto =
       req?.files?.vehiclePhoto === undefined ? "" : req?.files?.vehiclePhoto;
@@ -39,7 +41,9 @@ RegisterController.registerVehicle = async (req, res) => {
       !vehicleModel ||
       !returnDuration ||
       !agreed ||
-      !vehicleType
+      !vehicleType ||
+      !latitude ||
+      !longitude
     ) {
       Helper.response("Failed", "Please Provide all details", {}, res, 200);
       return;
@@ -105,6 +109,8 @@ RegisterController.registerVehicle = async (req, res) => {
       ReturnDuration: returnDuration,
       AgreedToTerms: agreed==1?true:false,
       vehicleType: vehicleType,
+      latitude: parseFloat(latitude),
+      longitude: parseFloat(longitude),
     });
     if (newRegister) {
       await newRegister.save();
@@ -136,6 +142,8 @@ RegisterController.registerRental = async (req, res) => {
       gearsProvided,
       agreed,
       vehicleType,
+      latitude,
+      longitude,
     } = req.body;
     const vehiclePhoto =
       req?.files?.vehiclePhoto === undefined ? "" : req?.files?.vehiclePhoto;
@@ -158,7 +166,9 @@ RegisterController.registerRental = async (req, res) => {
       !rentalPrice ||
       !agreed ||
       !gearsProvided||
-      !vehicleType
+      !vehicleType ||
+      !latitude ||
+      !longitude
     ) {
       Helper.response("Failed", "Please Provide all details", {}, res, 200);
       return;
@@ -215,6 +225,8 @@ RegisterController.registerRental = async (req, res) => {
       gearsProvided:gearsProvided,
       AgreedToTerms: agreed==1?true:false,
       vehicleType: vehicleType,
+      latitude: parseFloat(latitude),
+      longitude: parseFloat(longitude),
     });
     if (newRegister) {
       await newRegister.save();

@@ -80,6 +80,17 @@ const registerRentalSchema = new mongoose.Schema({
     vehicleType:{
         type:String,
         default:""
+    },
+    // Location coordinates
+    latitude: {
+        type: Number,
+        required: false,
+        default: null
+    },
+    longitude: {
+        type: Number,
+        required: false,
+        default: null
     }
 });
 

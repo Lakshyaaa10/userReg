@@ -31,7 +31,7 @@ const express  = require('express');
     });
 app.use("/",routes)
 
- app.listen(process.env.PORT,()=>{
+ app.listen(process.env.PORT,"0.0.0.0",()=>{
     console.log(`SERVER is listening at PORT ${process.env.PORT}`)
  })
  

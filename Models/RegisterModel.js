@@ -78,6 +78,46 @@ const RegisterSchema = new mongoose.Schema({
     vehicleType:{
         type:String,
         default:""
+    },
+    // RTO Assistance fields
+    rtoAssistanceRequested: {
+        type: Boolean,
+        default: false
+    },
+    rtoAssistanceStatus: {
+        type: String,
+        enum: ['pending', 'in_progress', 'completed', 'rejected'],
+        default: 'pending'
+    },
+    rtoAssistanceNotes: {
+        type: String,
+        default: ''
+    },
+    rtoAssistanceUpdatedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Admin',
+        default: null
+    },
+    rtoAssistanceUpdatedAt: {
+        type: Date,
+        default: null
+    },
+    // User reference for notifications
+    userId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'users',
+        default: null
+    },
+    // Location coordinates
+    latitude: {
+        type: Number,
+        required: false,
+        default: null
+    },
+    longitude: {
+        type: Number,
+        required: false,
+        default: null
     }
 });
 
