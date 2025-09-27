@@ -60,6 +60,11 @@ const RegisterSchema = new mongoose.Schema({
         type: String, // Could be a date string, or a specific duration format
         required: true
     },
+    rentalPrice: {
+        type: Number,
+        required: true,
+        min: 0 // Ensure price is not negative
+    },
     // Optional: Add a field for the "I have read and agree to the terms and conditions." checkbox
     AgreedToTerms: {
         type: Boolean,
