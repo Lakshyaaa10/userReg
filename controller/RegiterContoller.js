@@ -16,6 +16,7 @@ RegisterController.registerVehicle = async (req, res) => {
       contact,
       vehicleModel,
       returnDuration,
+      rentalPrice,
       agreed,
       vehicleType,
       latitude,
@@ -40,6 +41,7 @@ RegisterController.registerVehicle = async (req, res) => {
       !contact ||
       !vehicleModel ||
       !returnDuration ||
+      !rentalPrice ||
       !agreed ||
       !vehicleType ||
       !latitude ||
@@ -107,6 +109,7 @@ RegisterController.registerVehicle = async (req, res) => {
       PollutionCertificate: attachment4,
       VehicleModel: vehicleModel,
       ReturnDuration: returnDuration,
+      rentalPrice: parseFloat(rentalPrice),
       AgreedToTerms: agreed==1?true:false,
       vehicleType: vehicleType,
       latitude: parseFloat(latitude),
