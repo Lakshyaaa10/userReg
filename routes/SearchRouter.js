@@ -22,4 +22,9 @@ searchRouter.get('/vehicle-types', (req, res, next) => {
     SearchController.getVehicleTypes(req, res, next);
 });
 
+// Get owner details by vehicle ID
+searchRouter.get('/owner/:vehicleId', (req, res, next) => {
+    SearchController.getOwnerDetails(req, res, next);
+});
+
 module.exports = searchRouter;

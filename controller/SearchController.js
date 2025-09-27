@@ -195,4 +195,28 @@ SearchController.getVehicleTypes = async (req, res) => {
     }
 };
 
+// Get owner details by vehicle ID
+SearchController.getOwnerDetails = async (req, res) => {
+    try {
+        const { vehicleId } = req.params;
+
+        if (!vehicleId) {
+            return Helper.response("Failed", "Missing vehicleId", {}, res, 400);
+        }
+
+        const owner = await Register.findById(vehicleId)
+            .select('Name Age Address Landmark Pincode City State ContactNo VehicleModel ReturnDuration rentalPrice latitude longitude');
+
+        if (!owner) {
+            return Helper.response("Failed", "Owner not found", {}, res, 404);
+        }
+
+        Helper.response("Success", "Owner details retrieved successfully", owner, res, 200);
+
+    } catch (error) {
+        console.error('Get owner details error:', error);
+        Helper.response("Failed", "Internal Server Error", error.message, res, 500);
+    }
+};
+
 module.exports = SearchController;
