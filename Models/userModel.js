@@ -24,6 +24,47 @@ const Users = new mongoose.Schema({
     email:{
         type:String,
         default:""
+    },
+    // User profile fields
+    fullName: {
+        type: String,
+        default: ""
+    },
+    dateOfBirth: {
+        type: Date,
+        default: null
+    },
+    address: {
+        type: String,
+        default: ""
+    },
+    city: {
+        type: String,
+        default: ""
+    },
+    state: {
+        type: String,
+        default: ""
+    },
+    pincode: {
+        type: String,
+        default: ""
+    },
+    // Driver's license verification
+    isLicenseVerified: {
+        type: Boolean,
+        default: false
+    },
+    // Push notification token
+    pushToken: {
+        type: String,
+        default: ""
+    },
+    // User type
+    userType: {
+        type: String,
+        enum: ['renter', 'owner', 'both'],
+        default: 'renter'
     }
 })
 const userModel= mongoose.model("users",Users)

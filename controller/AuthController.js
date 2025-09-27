@@ -106,3 +106,20 @@ exports.Logout = async (req, res) => {
     Helper.response("Failed", "Unable to Logout ", error, res, 200);
   }
 };
+
+exports.getUserDetails = async (req, res) => {
+  try {
+    const token = req.headers["authorization"];
+    const string = token.split(" ")[1];
+    const user = await userModel.findOne({ token: string });  
+    if (user) {
+      Helper.response("Success", "User Found", user, res, 200);
+    }
+    else {
+      Helper.response("Failed", "No User Found", {}, res, 200);
+    }
+  } catch (error) {
+    console.log(error);
+    Helper.response("Failed", "Internal Server Error", error, res, 200);
+  }
+};
