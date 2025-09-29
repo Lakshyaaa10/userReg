@@ -4,22 +4,22 @@ const Helper = require("../Helper/Helper");
 const jwt = require("jsonwebtoken");
 exports.createUser = async (req, res) => {
   try {
-    const { mobile, password, email } = req.body;
+    const { mobile, password, email, username } = req.body;
 
-    if (!mobile || !password || !email) {
+    if (!mobile || !password || !email || !username) {
       return res
         .status(400)
-        .send("Mobile number, email, and password are required");
+        .send("Mobile number, email, username, and password are required");
     }
 
     const existingUser = await userModel.findOne({
-      $or: [{ mobile }, { email }],
+      $or: [{ mobile }, { email }, { username }],
     });
 
     if (existingUser) {
       return Helper.response(
         "Failed",
-        "Mobile or Email already in use",
+        "Mobile, Email, or Username already in use",
         {},
         res,
         409
@@ -30,6 +30,7 @@ exports.createUser = async (req, res) => {
       mobile,
       password,
       email,
+      username,
     });
 
     const savedUser = await newUser.save();
@@ -71,6 +72,8 @@ exports.Login = async (req, res) => {
           {
             id: user.id,
             username: user.username,
+            email: user.email,
+            mobile: user.mobile,
             token: token,
             base_url: process.env.BASE_URL,
           },
