@@ -2,9 +2,9 @@ const express = require('express');
 const paymentRouter = express.Router();
 const PaymentController = require('../controller/PaymentController');
 
-// Initialize payment
-paymentRouter.post('/initialize', (req, res, next) => {
-    PaymentController.initializePayment(req, res, next);
+// Create Razorpay order
+paymentRouter.post('/create-order', (req, res, next) => {
+    PaymentController.createOrder(req, res, next);
 });
 
 // Verify payment
@@ -12,14 +12,29 @@ paymentRouter.post('/verify', (req, res, next) => {
     PaymentController.verifyPayment(req, res, next);
 });
 
-// Get payment history
-paymentRouter.get('/history', (req, res, next) => {
-    PaymentController.getPaymentHistory(req, res, next);
+// Get payment status
+paymentRouter.get('/status/:bookingId', (req, res, next) => {
+    PaymentController.getPaymentStatus(req, res, next);
 });
 
 // Refund payment
 paymentRouter.post('/refund', (req, res, next) => {
     PaymentController.refundPayment(req, res, next);
+});
+
+// Get user details
+paymentRouter.get('/user/:userId', (req, res, next) => {
+    PaymentController.getUserDetails(req, res, next);
+});
+
+// Create offline booking
+paymentRouter.post('/offline-booking', (req, res, next) => {
+    PaymentController.createOfflineBooking(req, res, next);
+});
+
+// Update booking status
+paymentRouter.post('/update-status', (req, res, next) => {
+    PaymentController.updateBookingStatus(req, res, next);
 });
 
 module.exports = paymentRouter;
