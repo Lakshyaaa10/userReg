@@ -22,4 +22,14 @@ bookingRouter.put('/complete', (req, res, next) => {
     BookingController.completeBooking(req, res, next);
 });
 
+// Get bookings for a specific renter
+bookingRouter.get('/renter/:renterId', (req, res, next) => {
+    BookingController.getRenterBookings(req, res, next);
+});
+
+// Cancel booking
+bookingRouter.post('/cancel', (req, res, next) => {
+    BookingController.cancelBooking(req, res, next);
+});
+
 module.exports = bookingRouter;

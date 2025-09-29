@@ -141,6 +141,28 @@ BookingController.getUserBookings = async (req, res) => {
     }
 };
 
+// Get bookings for a specific renter
+BookingController.getRenterBookings = async (req, res) => {
+    try {
+        const { renterId } = req.params;
+        
+        if (!renterId) {
+            return Helper.response("Failed", "Missing renterId", {}, res, 400);
+        }
+
+        const bookings = await Booking.find({ renterId: renterId })
+            .sort({ createdAt: -1 })
+            .populate('vehicleId', 'VehicleModel vehicleType VehiclePhoto')
+            .populate('renterId', 'mobile email username');
+
+        Helper.response("Success", "Renter bookings retrieved successfully", bookings, res, 200);
+
+    } catch (error) {
+        console.error('Get renter bookings error:', error);
+        Helper.response("Failed", "Internal Server Error", error.message, res, 500);
+    }
+};
+
 // Update booking status (accept/reject)
 BookingController.updateBookingStatus = async (req, res) => {
     try {
@@ -244,6 +266,49 @@ BookingController.completeBooking = async (req, res) => {
 
     } catch (error) {
         console.error('Complete booking error:', error);
+        Helper.response("Failed", "Internal Server Error", error.message, res, 500);
+    }
+};
+
+// Cancel booking
+BookingController.cancelBooking = async (req, res) => {
+    try {
+        const { bookingId, reason } = req.body;
+        
+        if (!bookingId) {
+            return Helper.response("Failed", "Missing bookingId", {}, res, 400);
+        }
+
+        const booking = await Booking.findById(bookingId);
+        if (!booking) {
+            return Helper.response("Failed", "Booking not found", {}, res, 404);
+        }
+
+        // Check if booking can be cancelled
+        if (booking.status === 'completed' || booking.status === 'cancelled') {
+            return Helper.response("Failed", "Booking cannot be cancelled", {}, res, 400);
+        }
+
+        // Update booking status
+        booking.status = 'cancelled';
+        booking.cancellationReason = reason || 'Cancelled by user';
+        await booking.save();
+
+        // Create notification for owner
+        const ownerNotification = new Notification({
+            userId: booking.ownerId,
+            title: "Booking Cancelled",
+            message: `Booking for ${booking.vehicleModel} has been cancelled`,
+            type: "booking_cancelled",
+            relatedId: bookingId,
+            relatedType: "booking"
+        });
+        await ownerNotification.save();
+
+        Helper.response("Success", "Booking cancelled successfully", { booking }, res, 200);
+
+    } catch (error) {
+        console.error('Cancel booking error:', error);
         Helper.response("Failed", "Internal Server Error", error.message, res, 500);
     }
 };
