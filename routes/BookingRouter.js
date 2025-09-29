@@ -27,6 +27,11 @@ bookingRouter.get('/renter/:renterId', (req, res, next) => {
     BookingController.getRenterBookings(req, res, next);
 });
 
+// Get bookings for a specific owner
+bookingRouter.get('/owner/:ownerId', (req, res, next) => {
+    BookingController.getOwnerBookings(req, res, next);
+});
+
 // Cancel booking
 bookingRouter.post('/cancel', (req, res, next) => {
     BookingController.cancelBooking(req, res, next);
