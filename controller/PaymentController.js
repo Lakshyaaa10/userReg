@@ -197,7 +197,9 @@ PaymentController.createOfflineBooking = async (req, res) => {
             endDate,
             totalDays,
             pricePerDay,
-            totalAmount
+            totalAmount,
+            pickupLocation,
+            dropoffLocation
         } = req.body;
 
         // Validate required fields
@@ -205,28 +207,41 @@ PaymentController.createOfflineBooking = async (req, res) => {
             return Helper.response("Failed", "Missing required fields", {}, res, 400);
         }
 
-        // Verify vehicle exists
+        // Verify vehicle exists and get owner details
         const vehicle = await Register.findById(vehicleId);
         if (!vehicle) {
             return Helper.response("Failed", "Vehicle not found", {}, res, 404);
         }
 
-        // Create booking
+        // Get owner details from User model
+        const owner = await User.findById(vehicle.userId);
+        if (!owner) {
+            return Helper.response("Failed", "Vehicle owner not found", {}, res, 404);
+        }
+
+        // Create booking with all required fields
         const booking = new Booking({
             renterId,
             renterName,
             renterPhone,
             renterEmail,
             vehicleId,
-            vehicleOwnerId: vehicle.userId, // Get owner ID from vehicle
+            ownerId: vehicle.userId, // Use ownerId as required by schema
+            ownerName: owner.name || 'Unknown Owner',
+            ownerPhone: owner.contact || owner.phone || 'N/A',
+            vehicleModel: vehicle.VehicleModel || 'Unknown Model',
+            vehicleType: vehicle.vehicleType || 'bike',
+            vehiclePhoto: vehicle.VehiclePhoto || '',
             startDate: new Date(startDate),
             endDate: new Date(endDate),
             totalDays: parseInt(totalDays),
             pricePerDay: parseFloat(pricePerDay),
             totalAmount: parseFloat(totalAmount),
-            status: 'pending_offline_payment',
+            status: 'pending', // Use valid enum value
             paymentStatus: 'pending',
             paymentMethod: 'offline',
+            pickupLocation: pickupLocation || 'To be determined',
+            dropoffLocation: dropoffLocation || 'To be determined',
             createdAt: new Date()
         });
 
@@ -255,7 +270,7 @@ PaymentController.updateBookingStatus = async (req, res) => {
         const updateData = { status };
         if (paymentId) updateData.paymentId = paymentId;
         if (paymentStatus) updateData.paymentStatus = paymentStatus;
-        if (status === 'confirmed') updateData.paymentDate = new Date();
+        if (status === 'accepted') updateData.acceptedAt = new Date();
 
         const booking = await Booking.findByIdAndUpdate(
             bookingId,
