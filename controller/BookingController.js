@@ -163,6 +163,28 @@ BookingController.getRenterBookings = async (req, res) => {
     }
 };
 
+// Get bookings for a specific owner
+BookingController.getOwnerBookings = async (req, res) => {
+    try {
+        const { ownerId } = req.params;
+        
+        if (!ownerId) {
+            return Helper.response("Failed", "Missing ownerId", {}, res, 400);
+        }
+
+        const bookings = await Booking.find({ ownerId: ownerId })
+            .sort({ createdAt: -1 })
+            .populate('vehicleId', 'VehicleModel vehicleType VehiclePhoto')
+            .populate('renterId', 'mobile email username');
+
+        Helper.response("Success", "Owner bookings retrieved successfully", bookings, res, 200);
+
+    } catch (error) {
+        console.error('Get owner bookings error:', error);
+        Helper.response("Failed", "Internal Server Error", error.message, res, 500);
+    }
+};
+
 // Update booking status (accept/reject)
 BookingController.updateBookingStatus = async (req, res) => {
     try {
