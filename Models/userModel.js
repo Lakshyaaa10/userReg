@@ -25,6 +25,11 @@ const Users = new mongoose.Schema({
         type:String,
         default:""
     },
+    username:{
+        type:String,
+        required:true,
+        unique:true
+    },
     // User profile fields
     fullName: {
         type: String,
