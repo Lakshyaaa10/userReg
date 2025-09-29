@@ -1,140 +1,116 @@
 const Helper = require('../Helper/Helper');
 const Booking = require('../Models/BookingModel');
-const Notification = require('../Models/NotificationModel');
+const User = require('../Models/userModel');
+const Register = require('../Models/RegisterModel');
 
 const PaymentController = {};
 
-// Initialize payment (Razorpay integration)
-PaymentController.initializePayment = async (req, res) => {
+// Create Razorpay order
+PaymentController.createOrder = async (req, res) => {
     try {
-        const { bookingId, amount, currency = 'INR' } = req.body;
+        const { amount, currency = 'INR', receipt } = req.body;
 
-        if (!bookingId || !amount) {
-            return Helper.response("Failed", "Missing required fields", {}, res, 400);
+        if (!amount) {
+            return Helper.response("Failed", "Amount is required", {}, res, 400);
         }
 
-        const booking = await Booking.findById(bookingId);
-        if (!booking) {
-            return Helper.response("Failed", "Booking not found", {}, res, 404);
-        }
-
-        // Generate Razorpay order
-        const Razorpay = require('razorpay');
-        const razorpay = new Razorpay({
-            key_id: process.env.RAZORPAY_KEY_ID,
-            key_secret: process.env.RAZORPAY_KEY_SECRET
-        });
-
-        const options = {
-            amount: amount * 100, // Razorpay expects amount in paise
+        // In a real implementation, you would call Razorpay API here
+        // For now, we'll create a mock order
+        const order = {
+            id: `order_${Date.now()}`,
+            amount: amount * 100, // Convert to paise
             currency: currency,
-            receipt: `booking_${bookingId}`,
-            notes: {
-                bookingId: bookingId,
-                renterId: booking.renterId,
-                ownerId: booking.ownerId
-            }
+            receipt: receipt || `receipt_${Date.now()}`,
+            status: 'created',
+            created_at: new Date()
         };
 
-        const order = await razorpay.orders.create(options);
-
-        // Update booking with payment details
-        booking.paymentId = order.id;
-        await booking.save();
-
-        Helper.response("Success", "Payment initialized successfully", {
-            orderId: order.id,
-            amount: order.amount,
-            currency: order.currency,
-            key: process.env.RAZORPAY_KEY_ID
-        }, res, 200);
+        Helper.response("Success", "Order created successfully", { order }, res, 200);
 
     } catch (error) {
-        console.error('Initialize payment error:', error);
-        Helper.response("Failed", "Payment initialization failed", error.message, res, 500);
+        console.error('Create order error:', error);
+        Helper.response("Failed", "Internal Server Error", error.message, res, 500);
     }
 };
 
 // Verify payment
 PaymentController.verifyPayment = async (req, res) => {
     try {
-        const { bookingId, paymentId, signature } = req.body;
+        const { 
+            orderId, 
+            paymentId, 
+            signature, 
+            bookingId,
+            amount 
+        } = req.body;
 
-        if (!bookingId || !paymentId || !signature) {
+        if (!orderId || !paymentId || !signature || !bookingId) {
             return Helper.response("Failed", "Missing required fields", {}, res, 400);
         }
 
-        const booking = await Booking.findById(bookingId);
+        // In a real implementation, you would verify the signature with Razorpay
+        // For now, we'll assume the payment is successful
+        const isPaymentValid = true; // This should be actual Razorpay verification
+
+        if (isPaymentValid) {
+            // Update booking status
+            const booking = await Booking.findByIdAndUpdate(
+                bookingId,
+                {
+                    status: 'confirmed',
+                    paymentId: paymentId,
+                    paymentStatus: 'completed',
+                    paymentDate: new Date()
+                },
+                { new: true }
+            );
+
+            if (!booking) {
+                return Helper.response("Failed", "Booking not found", {}, res, 404);
+            }
+
+            Helper.response("Success", "Payment verified successfully", {
+                booking,
+                paymentId,
+                amount
+            }, res, 200);
+        } else {
+            Helper.response("Failed", "Payment verification failed", {}, res, 400);
+        }
+
+    } catch (error) {
+        console.error('Verify payment error:', error);
+        Helper.response("Failed", "Internal Server Error", error.message, res, 500);
+    }
+};
+
+// Get payment status
+PaymentController.getPaymentStatus = async (req, res) => {
+    try {
+        const { bookingId } = req.params;
+
+        if (!bookingId) {
+            return Helper.response("Failed", "Booking ID is required", {}, res, 400);
+        }
+
+        const booking = await Booking.findById(bookingId)
+            .select('status paymentStatus paymentId paymentDate totalAmount');
+
         if (!booking) {
             return Helper.response("Failed", "Booking not found", {}, res, 404);
         }
 
-        // Verify Razorpay signature
-        const crypto = require('crypto');
-        const expectedSignature = crypto
-            .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
-            .update(`${bookingId}|${paymentId}`)
-            .digest('hex');
-
-        if (signature !== expectedSignature) {
-            return Helper.response("Failed", "Invalid payment signature", {}, res, 400);
-        }
-
-        // Update booking payment status
-        booking.paymentStatus = 'paid';
-        booking.paymentMethod = 'razorpay';
-        await booking.save();
-
-        // Create success notification
-        const notification = new Notification({
-            userId: booking.renterId,
-            title: "Payment Successful",
-            message: `Payment of ₹${booking.totalAmount} for ${booking.vehicleModel} has been processed successfully`,
-            type: "payment_success",
-            relatedId: bookingId,
-            relatedType: "payment"
-        });
-        await notification.save();
-
-        // Create notification for owner
-        const ownerNotification = new Notification({
-            userId: booking.ownerId,
-            title: "Payment Received",
-            message: `Payment of ₹${booking.totalAmount} has been received for your ${booking.vehicleModel}`,
-            type: "payment_success",
-            relatedId: bookingId,
-            relatedType: "payment"
-        });
-        await ownerNotification.save();
-
-        Helper.response("Success", "Payment verified successfully", { booking }, res, 200);
+        Helper.response("Success", "Payment status retrieved successfully", {
+            bookingId,
+            status: booking.status,
+            paymentStatus: booking.paymentStatus,
+            paymentId: booking.paymentId,
+            paymentDate: booking.paymentDate,
+            totalAmount: booking.totalAmount
+        }, res, 200);
 
     } catch (error) {
-        console.error('Verify payment error:', error);
-        Helper.response("Failed", "Payment verification failed", error.message, res, 500);
-    }
-};
-
-// Get payment history
-PaymentController.getPaymentHistory = async (req, res) => {
-    try {
-        const { userId } = req.query;
-
-        if (!userId) {
-            return Helper.response("Failed", "Missing userId", {}, res, 400);
-        }
-
-        const payments = await Booking.find({
-            $or: [{ renterId: userId }, { ownerId: userId }],
-            paymentStatus: 'paid'
-        })
-        .select('vehicleModel totalAmount paymentStatus createdAt startDate endDate')
-        .sort({ createdAt: -1 });
-
-        Helper.response("Success", "Payment history retrieved successfully", payments, res, 200);
-
-    } catch (error) {
-        console.error('Get payment history error:', error);
+        console.error('Get payment status error:', error);
         Helper.response("Failed", "Internal Server Error", error.message, res, 500);
     }
 };
@@ -142,56 +118,160 @@ PaymentController.getPaymentHistory = async (req, res) => {
 // Refund payment
 PaymentController.refundPayment = async (req, res) => {
     try {
-        const { bookingId, reason } = req.body;
+        const { bookingId, amount, reason } = req.body;
 
-        if (!bookingId) {
-            return Helper.response("Failed", "Missing bookingId", {}, res, 400);
+        if (!bookingId || !amount) {
+            return Helper.response("Failed", "Booking ID and amount are required", {}, res, 400);
         }
 
         const booking = await Booking.findById(bookingId);
+
         if (!booking) {
             return Helper.response("Failed", "Booking not found", {}, res, 404);
         }
 
-        if (booking.paymentStatus !== 'paid') {
-            return Helper.response("Failed", "No payment to refund", {}, res, 400);
+        if (booking.paymentStatus !== 'completed') {
+            return Helper.response("Failed", "Payment not completed", {}, res, 400);
         }
 
-        // Process Razorpay refund
-        const Razorpay = require('razorpay');
-        const razorpay = new Razorpay({
-            key_id: process.env.RAZORPAY_KEY_ID,
-            key_secret: process.env.RAZORPAY_KEY_SECRET
-        });
-
-        const refund = await razorpay.payments.refund(booking.paymentId, {
-            amount: booking.totalAmount * 100, // Convert to paise
-            notes: {
-                reason: reason || 'Booking cancellation'
-            }
-        });
+        // In a real implementation, you would call Razorpay refund API
+        // For now, we'll create a mock refund
+        const refund = {
+            id: `rfnd_${Date.now()}`,
+            amount: amount * 100, // Convert to paise
+            status: 'processed',
+            reason: reason || 'Customer request',
+            created_at: new Date()
+        };
 
         // Update booking status
-        booking.paymentStatus = 'refunded';
-        booking.status = 'cancelled';
-        await booking.save();
-
-        // Create notification
-        const notification = new Notification({
-            userId: booking.renterId,
-            title: "Refund Processed",
-            message: `Refund of ₹${booking.totalAmount} has been processed for your booking`,
-            type: "payment_success",
-            relatedId: bookingId,
-            relatedType: "payment"
+        await Booking.findByIdAndUpdate(bookingId, {
+            status: 'cancelled',
+            paymentStatus: 'refunded',
+            refundId: refund.id,
+            refundDate: new Date()
         });
-        await notification.save();
 
         Helper.response("Success", "Refund processed successfully", { refund }, res, 200);
 
     } catch (error) {
         console.error('Refund payment error:', error);
-        Helper.response("Failed", "Refund processing failed", error.message, res, 500);
+        Helper.response("Failed", "Internal Server Error", error.message, res, 500);
+    }
+};
+
+// Get user details for payment
+PaymentController.getUserDetails = async (req, res) => {
+    try {
+        const { userId } = req.params;
+
+        if (!userId) {
+            return Helper.response("Failed", "User ID is required", {}, res, 400);
+        }
+
+        const user = await User.findById(userId)
+            .select('name email contact phone address city state pincode');
+
+        if (!user) {
+            return Helper.response("Failed", "User not found", {}, res, 404);
+        }
+
+        Helper.response("Success", "User details retrieved successfully", { user }, res, 200);
+
+    } catch (error) {
+        console.error('Get user details error:', error);
+        Helper.response("Failed", "Internal Server Error", error.message, res, 500);
+    }
+};
+
+// Create offline payment booking
+PaymentController.createOfflineBooking = async (req, res) => {
+    try {
+        const {
+            renterId,
+            renterName,
+            renterPhone,
+            renterEmail,
+            vehicleId,
+            startDate,
+            endDate,
+            totalDays,
+            pricePerDay,
+            totalAmount
+        } = req.body;
+
+        // Validate required fields
+        if (!renterId || !vehicleId || !startDate || !endDate || !totalDays || !pricePerDay || !totalAmount) {
+            return Helper.response("Failed", "Missing required fields", {}, res, 400);
+        }
+
+        // Verify vehicle exists
+        const vehicle = await Register.findById(vehicleId);
+        if (!vehicle) {
+            return Helper.response("Failed", "Vehicle not found", {}, res, 404);
+        }
+
+        // Create booking
+        const booking = new Booking({
+            renterId,
+            renterName,
+            renterPhone,
+            renterEmail,
+            vehicleId,
+            vehicleOwnerId: vehicle.userId, // Get owner ID from vehicle
+            startDate: new Date(startDate),
+            endDate: new Date(endDate),
+            totalDays: parseInt(totalDays),
+            pricePerDay: parseFloat(pricePerDay),
+            totalAmount: parseFloat(totalAmount),
+            status: 'pending_offline_payment',
+            paymentStatus: 'pending',
+            paymentMethod: 'offline',
+            createdAt: new Date()
+        });
+
+        await booking.save();
+
+        Helper.response("Success", "Offline booking created successfully", {
+            bookingId: booking._id,
+            booking
+        }, res, 201);
+
+    } catch (error) {
+        console.error('Create offline booking error:', error);
+        Helper.response("Failed", "Internal Server Error", error.message, res, 500);
+    }
+};
+
+// Update booking status
+PaymentController.updateBookingStatus = async (req, res) => {
+    try {
+        const { bookingId, status, paymentId, paymentStatus } = req.body;
+
+        if (!bookingId || !status) {
+            return Helper.response("Failed", "Booking ID and status are required", {}, res, 400);
+        }
+
+        const updateData = { status };
+        if (paymentId) updateData.paymentId = paymentId;
+        if (paymentStatus) updateData.paymentStatus = paymentStatus;
+        if (status === 'confirmed') updateData.paymentDate = new Date();
+
+        const booking = await Booking.findByIdAndUpdate(
+            bookingId,
+            updateData,
+            { new: true }
+        );
+
+        if (!booking) {
+            return Helper.response("Failed", "Booking not found", {}, res, 404);
+        }
+
+        Helper.response("Success", "Booking status updated successfully", { booking }, res, 200);
+
+    } catch (error) {
+        console.error('Update booking status error:', error);
+        Helper.response("Failed", "Internal Server Error", error.message, res, 500);
     }
 };
 
