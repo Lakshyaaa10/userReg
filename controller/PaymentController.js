@@ -212,14 +212,14 @@ PaymentController.createOfflineBooking = async (req, res) => {
         if (!vehicle) {
             return Helper.response("Failed", "Vehicle not found", {}, res, 404);
         }
-
+       console.log(vehicle.userId);
         // Get owner details from User model
         const owner = await User.findById(vehicle.userId);
         if (!owner) {
             return Helper.response("Failed", "Vehicle owner not found", {}, res, 404);
         }
 
-        // Create booking with all required fields
+        // Create booking with all required fields  
         const booking = new Booking({
             renterId,
             renterName,
