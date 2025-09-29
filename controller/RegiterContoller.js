@@ -19,6 +19,8 @@ RegisterController.registerVehicle = async (req, res) => {
       rentalPrice,
       agreed,
       vehicleType,
+      category,
+      subcategory,
       latitude,
       longitude,
     } = req.body;
@@ -44,6 +46,7 @@ RegisterController.registerVehicle = async (req, res) => {
       !rentalPrice ||
       !agreed ||
       !vehicleType ||
+      !category ||
       !latitude ||
       !longitude
     ) {
@@ -112,6 +115,8 @@ RegisterController.registerVehicle = async (req, res) => {
       rentalPrice: parseFloat(rentalPrice),
       AgreedToTerms: agreed==1?true:false,
       vehicleType: vehicleType,
+      category: category || 'Bike',
+      subcategory: subcategory || 'Standard',
       latitude: parseFloat(latitude),
       longitude: parseFloat(longitude),
     });
@@ -145,6 +150,8 @@ RegisterController.registerRental = async (req, res) => {
       gearsProvided,
       agreed,
       vehicleType,
+      category,
+      subcategory,
       latitude,
       longitude,
     } = req.body;
@@ -228,6 +235,8 @@ RegisterController.registerRental = async (req, res) => {
       gearsProvided:gearsProvided,
       AgreedToTerms: agreed==1?true:false,
       vehicleType: vehicleType,
+      category: category || 'Bike',
+      subcategory: subcategory || 'Standard',
       latitude: parseFloat(latitude),
       longitude: parseFloat(longitude),
     });

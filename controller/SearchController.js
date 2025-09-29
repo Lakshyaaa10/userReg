@@ -26,9 +26,9 @@ SearchController.searchVehicles = async (req, res) => {
             query.City = { $regex: city, $options: 'i' };
         }
 
-        // Vehicle type filter
-        if (vehicleType && vehicleType !== 'all') {
-            query.vehicleType = vehicleType;
+        // Vehicle type filter with case-insensitive matching
+        if (vehicleType && vehicleType !== 'all' && vehicleType !== 'All') {
+            query.vehicleType = { $regex: new RegExp(`^${vehicleType}$`, 'i') };
         }
 
         // Price range filter
@@ -191,6 +191,130 @@ SearchController.getVehicleTypes = async (req, res) => {
 
     } catch (error) {
         console.error('Get vehicle types error:', error);
+        Helper.response("Failed", "Internal Server Error", error.message, res, 500);
+    }
+};
+
+// Get vehicles by category with enhanced filtering
+SearchController.getVehiclesByCategory = async (req, res) => {
+    try {
+        const { 
+            category = 'all',
+            city,
+            minPrice,
+            maxPrice,
+            page = 1,
+            limit = 20
+        } = req.query;
+
+        const skip = (page - 1) * limit;
+        let query = {};
+
+        // Category filter with support for main categories and subcategories
+        if (category && category !== 'all' && category !== 'All') {
+            const categoryLower = category.toLowerCase();
+            
+            // Map frontend categories to database vehicle types
+            if (categoryLower === 'bike') {
+                query.vehicleType = { $in: ['bike', 'Bike', 'BIKE'] };
+            } else if (categoryLower === 'scooty') {
+                query.vehicleType = { $in: ['scooty', 'Scooty', 'SCOOTY', 'scooter', 'Scooter'] };
+            } else if (categoryLower === 'car') {
+                query.vehicleType = { $in: ['car', 'Car', 'CAR', 'sedan', 'Sedan', 'SUV', 'suv', 'hatchback', 'Hatchback'] };
+            } else {
+                // Direct match for specific vehicle types
+                query.vehicleType = { $regex: new RegExp(`^${category}$`, 'i') };
+            }
+        }
+
+        // City filter
+        if (city) {
+            query.City = { $regex: city, $options: 'i' };
+        }
+
+        // Price range filter
+        if (minPrice || maxPrice) {
+            query.rentalPrice = {};
+            if (minPrice) query.rentalPrice.$gte = parseInt(minPrice);
+            if (maxPrice) query.rentalPrice.$lte = parseInt(maxPrice);
+        }
+
+        // Get vehicles with pagination
+        const vehicles = await Register.find(query)
+            .select('Name VehicleModel vehicleType rentalPrice City State VehiclePhoto ContactNo Address Landmark Pincode latitude longitude')
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(parseInt(limit));
+
+        const totalCount = await Register.countDocuments(query);
+
+        Helper.response("Success", "Vehicles retrieved successfully", {
+            vehicles,
+            pagination: {
+                currentPage: parseInt(page),
+                totalPages: Math.ceil(totalCount / limit),
+                totalCount,
+                hasNextPage: skip + parseInt(limit) < totalCount,
+                hasPrevPage: page > 1
+            },
+            filters: {
+                category,
+                city,
+                minPrice,
+                maxPrice
+            }
+        }, res, 200);
+
+    } catch (error) {
+        console.error('Get vehicles by category error:', error);
+        Helper.response("Failed", "Internal Server Error", error.message, res, 500);
+    }
+};
+
+// Get vehicle categories with counts
+SearchController.getVehicleCategories = async (req, res) => {
+    try {
+        const categories = await Register.aggregate([
+            {
+                $group: {
+                    _id: {
+                        $switch: {
+                            branches: [
+                                {
+                                    case: { $in: ['$vehicleType', ['bike', 'Bike', 'BIKE']] },
+                                    then: 'Bike'
+                                },
+                                {
+                                    case: { $in: ['$vehicleType', ['scooty', 'Scooty', 'SCOOTY', 'scooter', 'Scooter']] },
+                                    then: 'Scooty'
+                                },
+                                {
+                                    case: { $in: ['$vehicleType', ['car', 'Car', 'CAR', 'sedan', 'Sedan', 'SUV', 'suv', 'hatchback', 'Hatchback']] },
+                                    then: 'Car'
+                                }
+                            ],
+                            default: '$vehicleType'
+                        }
+                    },
+                    count: { $sum: 1 }
+                }
+            },
+            {
+                $sort: { count: -1 }
+            },
+            {
+                $project: {
+                    category: '$_id',
+                    count: 1,
+                    _id: 0
+                }
+            }
+        ]);
+
+        Helper.response("Success", "Vehicle categories retrieved successfully", { categories }, res, 200);
+
+    } catch (error) {
+        console.error('Get vehicle categories error:', error);
         Helper.response("Failed", "Internal Server Error", error.message, res, 500);
     }
 };
