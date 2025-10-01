@@ -4,6 +4,20 @@ const Availability = require('../Models/AvailabilityModel');
 
 const SearchController = {};
 
+// Haversine formula to calculate distance between two coordinates
+function calculateDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371; // Radius of the Earth in kilometers
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const distance = R * c; // Distance in kilometers
+    return distance;
+}
+
 // Search vehicles with filters
 SearchController.searchVehicles = async (req, res) => {
     try {
@@ -14,6 +28,9 @@ SearchController.searchVehicles = async (req, res) => {
             vehicleType, 
             minPrice, 
             maxPrice,
+            latitude,
+            longitude,
+            radius = 50, // Default radius in kilometers
             page = 1, 
             limit = 20 
         } = req.query;
@@ -36,6 +53,17 @@ SearchController.searchVehicles = async (req, res) => {
             query.rentalPrice = {};
             if (minPrice) query.rentalPrice.$gte = parseInt(minPrice);
             if (maxPrice) query.rentalPrice.$lte = parseInt(maxPrice);
+        }
+
+        // Location-based filter (geospatial query)
+        if (latitude && longitude) {
+            const userLat = parseFloat(latitude);
+            const userLon = parseFloat(longitude);
+            const radiusInKm = parseFloat(radius);
+            
+            // Ensure latitude and longitude are not null in the database
+            query.latitude = { $ne: null };
+            query.longitude = { $ne: null };
         }
 
         // Get available vehicles
@@ -75,8 +103,29 @@ SearchController.searchVehicles = async (req, res) => {
         } else {
             // No date filter, return all matching vehicles
             availableVehicles = await Register.find(query)
-                .select('Name VehicleModel vehicleType rentalPrice City State VehiclePhoto ContactNo Address')
+                .select('Name VehicleModel vehicleType rentalPrice hourlyPrice City State VehiclePhoto ContactNo Address latitude longitude')
                 .sort({ createdAt: -1 });
+        }
+
+        // Calculate distance for each vehicle if user location is provided
+        if (latitude && longitude) {
+            const userLat = parseFloat(latitude);
+            const userLon = parseFloat(longitude);
+            const radiusInKm = parseFloat(radius);
+            
+            availableVehicles = availableVehicles.map(vehicle => {
+                const vehicleLat = vehicle.latitude;
+                const vehicleLon = vehicle.longitude;
+                
+                // Calculate distance using Haversine formula
+                const distance = calculateDistance(userLat, userLon, vehicleLat, vehicleLon);
+                
+                return {
+                    ...vehicle.toObject(),
+                    distance: parseFloat(distance.toFixed(2)) // Distance in km
+                };
+            }).filter(vehicle => vehicle.distance <= radiusInKm) // Filter by radius
+              .sort((a, b) => a.distance - b.distance); // Sort by distance (nearest first)
         }
 
         // Pagination
@@ -89,7 +138,12 @@ SearchController.searchVehicles = async (req, res) => {
                 currentPage: parseInt(page),
                 totalPages: Math.ceil(totalCount / limit),
                 totalCount
-            }
+            },
+            userLocation: latitude && longitude ? {
+                latitude: parseFloat(latitude),
+                longitude: parseFloat(longitude),
+                radius: parseFloat(radius)
+            } : null
         }, res, 200);
 
     } catch (error) {
@@ -203,6 +257,9 @@ SearchController.getVehiclesByCategory = async (req, res) => {
             city,
             minPrice,
             maxPrice,
+            latitude,
+            longitude,
+            radius = 50,
             page = 1,
             limit = 20
         } = req.query;
@@ -239,17 +296,42 @@ SearchController.getVehiclesByCategory = async (req, res) => {
             if (maxPrice) query.rentalPrice.$lte = parseInt(maxPrice);
         }
 
-        // Get vehicles with pagination
-        const vehicles = await Register.find(query)
-            .select('Name VehicleModel vehicleType rentalPrice City State VehiclePhoto ContactNo Address Landmark Pincode latitude longitude')
-            .sort({ createdAt: -1 })
-            .skip(skip)
-            .limit(parseInt(limit));
+        // Location-based filter
+        if (latitude && longitude) {
+            query.latitude = { $ne: null };
+            query.longitude = { $ne: null };
+        }
 
-        const totalCount = await Register.countDocuments(query);
+        // Get vehicles
+        let vehicles = await Register.find(query)
+            .select('Name VehicleModel vehicleType rentalPrice hourlyPrice City State VehiclePhoto ContactNo Address Landmark Pincode latitude longitude')
+            .sort({ createdAt: -1 });
+
+        // Calculate distance and filter by radius if location is provided
+        if (latitude && longitude) {
+            const userLat = parseFloat(latitude);
+            const userLon = parseFloat(longitude);
+            const radiusInKm = parseFloat(radius);
+            
+            vehicles = vehicles.map(vehicle => {
+                const vehicleLat = vehicle.latitude;
+                const vehicleLon = vehicle.longitude;
+                const distance = calculateDistance(userLat, userLon, vehicleLat, vehicleLon);
+                
+                return {
+                    ...vehicle.toObject(),
+                    distance: parseFloat(distance.toFixed(2))
+                };
+            }).filter(vehicle => vehicle.distance <= radiusInKm)
+              .sort((a, b) => a.distance - b.distance);
+        }
+
+        // Pagination
+        const totalCount = vehicles.length;
+        const paginatedVehicles = vehicles.slice(skip, skip + parseInt(limit));
 
         Helper.response("Success", "Vehicles retrieved successfully", {
-            vehicles,
+            vehicles: paginatedVehicles,
             pagination: {
                 currentPage: parseInt(page),
                 totalPages: Math.ceil(totalCount / limit),
@@ -262,7 +344,12 @@ SearchController.getVehiclesByCategory = async (req, res) => {
                 city,
                 minPrice,
                 maxPrice
-            }
+            },
+            userLocation: latitude && longitude ? {
+                latitude: parseFloat(latitude),
+                longitude: parseFloat(longitude),
+                radius: parseFloat(radius)
+            } : null
         }, res, 200);
 
     } catch (error) {
@@ -329,7 +416,7 @@ SearchController.getOwnerDetails = async (req, res) => {
         }
 
         const owner = await Register.findById(vehicleId)
-            .select('Name Age Address Landmark Pincode City State ContactNo VehicleModel ReturnDuration rentalPrice latitude longitude');
+            .select('Name Age Address Landmark Pincode City State ContactNo VehicleModel ReturnDuration rentalPrice hourlyPrice latitude longitude');
 
         if (!owner) {
             return Helper.response("Failed", "Owner not found", {}, res, 404);

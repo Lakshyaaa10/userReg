@@ -54,6 +54,12 @@ const registerRentalSchema = new mongoose.Schema({
         type: Number, // Could be a date string, or a specific duration format
         required: true
     },
+    hourlyPrice: {
+        type: Number,
+        required: false,
+        min: 0,
+        default: null
+    },
     vehiclePhoto: {
         type: String, // Stores the URL or path to the uploaded address proof
         required: false

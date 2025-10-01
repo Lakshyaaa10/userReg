@@ -65,6 +65,12 @@ const RegisterSchema = new mongoose.Schema({
         required: true,
         min: 0 // Ensure price is not negative
     },
+    hourlyPrice: {
+        type: Number,
+        required: false,
+        min: 0,
+        default: null
+    },
     // Optional: Add a field for the "I have read and agree to the terms and conditions." checkbox
     AgreedToTerms: {
         type: Boolean,
