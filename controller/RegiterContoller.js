@@ -98,6 +98,31 @@ RegisterController.registerVehicle = async (req, res) => {
       const upload = await Helper.uploadVehicle(PUC);
       var attachment4 = upload;
     }
+    // Auto-determine category and subcategory based on vehicleType
+    let autoCategory = '2-wheeler';
+    let autoSubcategory = 'Bike';
+    
+    const vehicleTypeLower = vehicleType.toLowerCase();
+    if (vehicleTypeLower === 'bike') {
+      autoCategory = '2-wheeler';
+      autoSubcategory = 'Bike';
+    } else if (vehicleTypeLower === 'scooty' || vehicleTypeLower === 'scooter') {
+      autoCategory = '2-wheeler';
+      autoSubcategory = 'Scooty';
+    } else if (vehicleTypeLower === 'sedan') {
+      autoCategory = '4-wheeler';
+      autoSubcategory = 'Sedan';
+    } else if (vehicleTypeLower === 'suv') {
+      autoCategory = '4-wheeler';
+      autoSubcategory = 'SUV';
+    } else if (vehicleTypeLower === 'hatchback') {
+      autoCategory = '4-wheeler';
+      autoSubcategory = 'Hatchback';
+    } else if (vehicleTypeLower === 'car') {
+      autoCategory = '4-wheeler';
+      autoSubcategory = subcategory || 'Sedan';
+    }
+
     const newRegister = new Register({
       Name: name,
       Age: age,
@@ -117,8 +142,8 @@ RegisterController.registerVehicle = async (req, res) => {
       hourlyPrice: hourlyPrice ? parseFloat(hourlyPrice) : null,
       AgreedToTerms: agreed==1?true:false,
       vehicleType: vehicleType,
-      category: category || 'Bike',
-      subcategory: subcategory || 'Standard',
+      category: category || autoCategory,
+      subcategory: subcategory || autoSubcategory,
       latitude: parseFloat(latitude),
       longitude: parseFloat(longitude),
     });
@@ -239,8 +264,8 @@ RegisterController.registerRental = async (req, res) => {
       gearsProvided:gearsProvided,
       AgreedToTerms: agreed==1?true:false,
       vehicleType: vehicleType,
-      category: category || 'Bike',
-      subcategory: subcategory || 'Standard',
+      category: category || (vehicleType?.toLowerCase().includes('car') || vehicleType?.toLowerCase().includes('sedan') || vehicleType?.toLowerCase().includes('suv') || vehicleType?.toLowerCase().includes('hatchback') ? '4-wheeler' : '2-wheeler'),
+      subcategory: subcategory || (vehicleType?.toLowerCase() === 'bike' ? 'Bike' : vehicleType?.toLowerCase() === 'scooty' ? 'Scooty' : vehicleType),
       latitude: parseFloat(latitude),
       longitude: parseFloat(longitude),
     });

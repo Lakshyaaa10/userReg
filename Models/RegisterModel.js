@@ -89,20 +89,20 @@ const RegisterSchema = new mongoose.Schema({
     vehicleType:{
         type:String,
         required: true,
-        enum: ['bike', 'scooty', 'car', 'scooter', 'sedan', 'SUV', 'hatchback', 'Bike', 'Scooty', 'Car', 'Scooter', 'Sedan', 'Hatchback'],
+        enum: ['bike', 'scooty', 'car', 'scooter', 'sedan', 'SUV', 'suv', 'hatchback', 'Bike', 'Scooty', 'Car', 'Scooter', 'Sedan', 'Hatchback'],
         default:"bike"
     },
     category: {
         type: String,
         required: true,
-        enum: ['Bike', 'Scooty', 'Car'],
-        default: 'Bike'
+        enum: ['2-wheeler', '4-wheeler', '2-Wheeler', '4-Wheeler'],
+        default: '2-wheeler'
     },
     subcategory: {
         type: String,
-        required: false,
-        enum: ['Standard', 'Sports', 'Cruiser', 'Touring', 'Sedan', 'SUV', 'Hatchback', 'Convertible', 'Electric', 'Petrol', 'Diesel', 'Hybrid'],
-        default: 'Standard'
+        required: true,
+        enum: ['Bike', 'Scooty', 'Sedan', 'SUV', 'Hatchback', 'bike', 'scooty', 'sedan', 'suv', 'hatchback'],
+        default: 'Bike'
     },
     // RTO Assistance fields
     rtoAssistanceRequested: {

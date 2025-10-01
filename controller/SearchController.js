@@ -101,10 +101,29 @@ SearchController.searchVehicles = async (req, res) => {
                 }
             }
         } else {
-            // No date filter, return all matching vehicles
-            availableVehicles = await Register.find(query)
-                .select('Name VehicleModel vehicleType rentalPrice hourlyPrice City State VehiclePhoto ContactNo Address latitude longitude')
+            // No date filter, return all matching vehicles but exclude currently booked ones
+            const allVehicles = await Register.find(query)
+                .select('Name VehicleModel vehicleType category subcategory rentalPrice hourlyPrice City State VehiclePhoto ContactNo Address latitude longitude')
                 .sort({ createdAt: -1 });
+
+            // Filter out currently booked vehicles
+            const Booking = require('../Models/BookingModel');
+            const currentDate = new Date();
+            
+            for (const vehicle of allVehicles) {
+                // Check if vehicle has any active bookings
+                const activeBooking = await Booking.findOne({
+                    vehicleId: vehicle._id,
+                    status: { $in: ['pending', 'accepted', 'in_progress'] },
+                    startDate: { $lte: currentDate },
+                    endDate: { $gte: currentDate }
+                });
+                
+                // Only include vehicle if no active booking
+                if (!activeBooking) {
+                    availableVehicles.push(vehicle);
+                }
+            }
         }
 
         // Calculate distance for each vehicle if user location is provided
@@ -254,6 +273,7 @@ SearchController.getVehiclesByCategory = async (req, res) => {
     try {
         const { 
             category = 'all',
+            subcategory,
             city,
             minPrice,
             maxPrice,
@@ -267,21 +287,31 @@ SearchController.getVehiclesByCategory = async (req, res) => {
         const skip = (page - 1) * limit;
         let query = {};
 
-        // Category filter with support for main categories and subcategories
+        // Category filter (2-wheeler or 4-wheeler)
         if (category && category !== 'all' && category !== 'All') {
             const categoryLower = category.toLowerCase();
             
-            // Map frontend categories to database vehicle types
-            if (categoryLower === 'bike') {
-                query.vehicleType = { $in: ['bike', 'Bike', 'BIKE'] };
+            if (categoryLower === '2-wheeler' || categoryLower === '2wheeler') {
+                query.category = { $in: ['2-wheeler', '2-Wheeler'] };
+            } else if (categoryLower === '4-wheeler' || categoryLower === '4wheeler') {
+                query.category = { $in: ['4-wheeler', '4-Wheeler'] };
+            } else if (categoryLower === 'bike') {
+                query.category = { $in: ['2-wheeler', '2-Wheeler'] };
+                query.subcategory = { $in: ['bike', 'Bike', 'BIKE'] };
             } else if (categoryLower === 'scooty') {
-                query.vehicleType = { $in: ['scooty', 'Scooty', 'SCOOTY', 'scooter', 'Scooter'] };
+                query.category = { $in: ['2-wheeler', '2-Wheeler'] };
+                query.subcategory = { $in: ['scooty', 'Scooty', 'scooter', 'Scooter'] };
             } else if (categoryLower === 'car') {
-                query.vehicleType = { $in: ['car', 'Car', 'CAR', 'sedan', 'Sedan', 'SUV', 'suv', 'hatchback', 'Hatchback'] };
+                query.category = { $in: ['4-wheeler', '4-Wheeler'] };
             } else {
                 // Direct match for specific vehicle types
                 query.vehicleType = { $regex: new RegExp(`^${category}$`, 'i') };
             }
+        }
+
+        // Subcategory filter
+        if (subcategory && subcategory !== 'all' && subcategory !== 'All') {
+            query.subcategory = { $regex: new RegExp(`^${subcategory}$`, 'i') };
         }
 
         // City filter
@@ -302,10 +332,30 @@ SearchController.getVehiclesByCategory = async (req, res) => {
             query.longitude = { $ne: null };
         }
 
-        // Get vehicles
-        let vehicles = await Register.find(query)
-            .select('Name VehicleModel vehicleType rentalPrice hourlyPrice City State VehiclePhoto ContactNo Address Landmark Pincode latitude longitude')
+        // Get all vehicles matching query
+        const allVehicles = await Register.find(query)
+            .select('Name VehicleModel vehicleType category subcategory rentalPrice hourlyPrice City State VehiclePhoto ContactNo Address Landmark Pincode latitude longitude')
             .sort({ createdAt: -1 });
+
+        // Filter out currently booked vehicles
+        const Booking = require('../Models/BookingModel');
+        const currentDate = new Date();
+        let vehicles = [];
+        
+        for (const vehicle of allVehicles) {
+            // Check if vehicle has any active bookings
+            const activeBooking = await Booking.findOne({
+                vehicleId: vehicle._id,
+                status: { $in: ['pending', 'accepted', 'in_progress'] },
+                startDate: { $lte: currentDate },
+                endDate: { $gte: currentDate }
+            });
+            
+            // Only include vehicle if no active booking
+            if (!activeBooking) {
+                vehicles.push(vehicle);
+            }
+        }
 
         // Calculate distance and filter by radius if location is provided
         if (latitude && longitude) {
