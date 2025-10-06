@@ -11,7 +11,6 @@ const AdminRouter = require('./AdminRouter');
 const EarningsRouter = require('./EarningsRouter');
 const RTORouter = require('./RTORouter');
 const SearchRouter = require('./SearchRouter');
-const FavoritesRouter = require('./FavoritesRouter');
 
 // Authentication routes
 routes.use("/",AuthRoutes)
@@ -42,9 +41,6 @@ routes.use('/rto', RTORouter)
 
 // Search routes
 routes.use('/search', SearchRouter)
-
-// Favorites routes
-routes.use('/favorites', FavoritesRouter)
 
 routes.use("*", (req, res, next) => {
     res.send("Not Found");
