@@ -82,6 +82,24 @@ BookingController.createBooking = async (req, res) => {
 
         const savedBooking = await newBooking.save();
 
+        // Mark dates as unavailable in Availability collection
+        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+            await Availability.findOneAndUpdate(
+                {
+                    vehicleId: vehicleId,
+                    date: d
+                },
+                {
+                    vehicleId: vehicleId,
+                    ownerId: vehicle._id,
+                    date: d,
+                    isAvailable: false,
+                    reason: 'booked'
+                },
+                { upsert: true, new: true }
+            );
+        }
+
         // Create notification for owner
         const ownerNotification = new Notification({
             userId: vehicle._id, // Assuming owner has a user account
@@ -208,6 +226,48 @@ BookingController.updateBookingStatus = async (req, res) => {
         booking.status = status;
         if (status === 'accepted') {
             booking.acceptedAt = new Date();
+            
+            // Mark dates as unavailable when booking is accepted
+            const start = new Date(booking.startDate);
+            const end = new Date(booking.endDate);
+            
+            for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                await Availability.findOneAndUpdate(
+                    {
+                        vehicleId: booking.vehicleId,
+                        date: d
+                    },
+                    {
+                        vehicleId: booking.vehicleId,
+                        ownerId: booking.ownerId,
+                        date: d,
+                        isAvailable: false,
+                        reason: 'booked'
+                    },
+                    { upsert: true, new: true }
+                );
+            }
+        } else if (status === 'rejected' || status === 'cancelled') {
+            // Mark dates as available again when booking is rejected/cancelled
+            const start = new Date(booking.startDate);
+            const end = new Date(booking.endDate);
+            
+            for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                await Availability.findOneAndUpdate(
+                    {
+                        vehicleId: booking.vehicleId,
+                        date: d
+                    },
+                    {
+                        vehicleId: booking.vehicleId,
+                        ownerId: booking.ownerId,
+                        date: d,
+                        isAvailable: true,
+                        reason: 'personal_use'
+                    },
+                    { upsert: true, new: true }
+                );
+            }
         }
         await booking.save();
 
