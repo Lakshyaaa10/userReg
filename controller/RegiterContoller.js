@@ -47,7 +47,6 @@ RegisterController.registerVehicle = async (req, res) => {
       !rentalPrice ||
       !agreed ||
       !vehicleType ||
-      !category ||
       !latitude ||
       !longitude
     ) {
