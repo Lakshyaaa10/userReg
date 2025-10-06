@@ -1,6 +1,7 @@
 const Helper = require('../Helper/Helper');
 const Register = require('../Models/RegisterModel');
 const Availability = require('../Models/AvailabilityModel');
+const Booking = require('../Models/BookingModel');
 
 const SearchController = {};
 
@@ -101,25 +102,24 @@ SearchController.searchVehicles = async (req, res) => {
                 }
             }
         } else {
-            // No date filter, return all matching vehicles but exclude currently booked ones
+            // No date filter, but still check for current bookings
             const allVehicles = await Register.find(query)
                 .select('Name VehicleModel vehicleType category subcategory rentalPrice hourlyPrice City State VehiclePhoto ContactNo Address latitude longitude')
                 .sort({ createdAt: -1 });
 
-            // Filter out currently booked vehicles
-            const Booking = require('../Models/BookingModel');
-            const currentDate = new Date();
+            // Filter out vehicles that are currently booked (today onwards)
+            const today = new Date();
+            today.setHours(0, 0, 0, 0); // Start of today
             
+            availableVehicles = [];
             for (const vehicle of allVehicles) {
                 // Check if vehicle has any active bookings
                 const activeBooking = await Booking.findOne({
                     vehicleId: vehicle._id,
                     status: { $in: ['pending', 'accepted', 'in_progress'] },
-                    startDate: { $lte: currentDate },
-                    endDate: { $gte: currentDate }
+                    endDate: { $gte: today }
                 });
                 
-                // Only include vehicle if no active booking
                 if (!activeBooking) {
                     availableVehicles.push(vehicle);
                 }
@@ -332,26 +332,24 @@ SearchController.getVehiclesByCategory = async (req, res) => {
             query.longitude = { $ne: null };
         }
 
-        // Get all vehicles matching query
+        // Get vehicles
         const allVehicles = await Register.find(query)
             .select('Name VehicleModel vehicleType category subcategory rentalPrice hourlyPrice City State VehiclePhoto ContactNo Address Landmark Pincode latitude longitude')
             .sort({ createdAt: -1 });
 
-        // Filter out currently booked vehicles
-        const Booking = require('../Models/BookingModel');
-        const currentDate = new Date();
-        let vehicles = [];
+        // Filter out vehicles that are currently booked (today onwards)
+        const today = new Date();
+        today.setHours(0, 0, 0, 0); // Start of today
         
+        let vehicles = [];
         for (const vehicle of allVehicles) {
             // Check if vehicle has any active bookings
             const activeBooking = await Booking.findOne({
                 vehicleId: vehicle._id,
                 status: { $in: ['pending', 'accepted', 'in_progress'] },
-                startDate: { $lte: currentDate },
-                endDate: { $gte: currentDate }
+                endDate: { $gte: today }
             });
             
-            // Only include vehicle if no active booking
             if (!activeBooking) {
                 vehicles.push(vehicle);
             }

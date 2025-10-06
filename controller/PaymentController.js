@@ -2,6 +2,7 @@ const Helper = require('../Helper/Helper');
 const Booking = require('../Models/BookingModel');
 const User = require('../Models/userModel');
 const Register = require('../Models/RegisterModel');
+const Availability = require('../Models/AvailabilityModel');
 
 const PaymentController = {};
 
@@ -246,6 +247,27 @@ PaymentController.createOfflineBooking = async (req, res) => {
         });
 
         await booking.save();
+
+        // Mark dates as unavailable in Availability collection
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        
+        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+            await Availability.findOneAndUpdate(
+                {
+                    vehicleId: vehicleId,
+                    date: d
+                },
+                {
+                    vehicleId: vehicleId,
+                    ownerId: vehicle.userId,
+                    date: d,
+                    isAvailable: false,
+                    reason: 'booked'
+                },
+                { upsert: true, new: true }
+            );
+        }
 
         Helper.response("Success", "Offline booking created successfully", {
             bookingId: booking._id,
