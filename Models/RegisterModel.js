@@ -4,7 +4,6 @@ const RegisterSchema = new mongoose.Schema({
     Name: {
         type: String,
         required: true,
-        unique: true // Assuming each lister name should be unique
     },
     Age: {
         type: Number,
@@ -33,8 +32,7 @@ const RegisterSchema = new mongoose.Schema({
     },
     ContactNo: {
         type: String, // Storing as string to handle various formats (e.g., with country codes, spaces)
-        required: true,
-        unique: true // Assuming contact numbers should be unique for each registration
+        required: true,// Assuming contact numbers should be unique for each registration
     },
     VehiclePhoto: {
         type: String, // Stores the URL or path to the uploaded photo
