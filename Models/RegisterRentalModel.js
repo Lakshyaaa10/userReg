@@ -97,6 +97,48 @@ const registerRentalSchema = new mongoose.Schema({
         type: Number,
         required: false,
         default: null
+    },
+    // Multiple vehicles support
+    additionalVehicles: [{
+        category: {
+            type: String,
+            required: true,
+            enum: ['2-wheeler', '4-wheeler', '2-Wheeler', '4-Wheeler']
+        },
+        subcategory: {
+            type: String,
+            required: true,
+            enum: ['Bike', 'Scooty', 'Scooter', 'Car', 'Sedan', 'SUV', 'Hatchback', 'bike', 'scooty', 'scooter', 'car', 'sedan', 'suv', 'hatchback']
+        },
+        model: {
+            type: String,
+            required: true
+        },
+        rentalPrice: {
+            type: Number,
+            required: true,
+            min: 0
+        },
+        photo: {
+            type: String,
+            required: false,
+            default: null
+        },
+        addedAt: {
+            type: Date,
+            default: Date.now
+        }
+    }],
+    // Main vehicle details (keeping for backward compatibility)
+    category: {
+        type: String,
+        required: true,
+        enum: ['2-wheeler', '4-wheeler', '2-Wheeler', '4-Wheeler']
+    },
+    subcategory: {
+        type: String,
+        required: true,
+        enum: ['Bike', 'Scooty', 'Scooter', 'Car', 'Sedan', 'SUV', 'Hatchback', 'bike', 'scooty', 'scooter', 'car', 'sedan', 'suv', 'hatchback']
     }
 });
 
