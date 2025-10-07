@@ -181,6 +181,7 @@ RegisterController.registerRental = async (req, res) => {
       subcategory,
       latitude,
       longitude,
+      additionalVehicles
     } = req.body;
     const vehiclePhoto =
       req?.files?.vehiclePhoto === undefined ? "" : req?.files?.vehiclePhoto;
@@ -230,6 +231,46 @@ RegisterController.registerRental = async (req, res) => {
       Helper.response("Failed", "Please Provide Licence Photo", {}, res, 200);
       return;
     }
+
+    // Parse and validate additional vehicles
+    let parsedAdditionalVehicles = [];
+    if (additionalVehicles) {
+      try {
+        parsedAdditionalVehicles = JSON.parse(additionalVehicles);
+        
+        // Validate each additional vehicle
+        for (let i = 0; i < parsedAdditionalVehicles.length; i++) {
+          const vehicle = parsedAdditionalVehicles[i];
+          if (!vehicle.category || !vehicle.subcategory || !vehicle.model || !vehicle.rentalPrice) {
+            Helper.response("Failed", `Please provide all details for additional vehicle ${i + 1}`, {}, res, 200);
+            return;
+          }
+          
+          // Validate category and subcategory
+          const validCategories = ['2-wheeler', '4-wheeler', '2-Wheeler', '4-Wheeler'];
+          const validSubcategories = ['Bike', 'Scooty', 'Scooter', 'Car', 'Sedan', 'SUV', 'Hatchback', 'bike', 'scooty', 'scooter', 'car', 'sedan', 'suv', 'hatchback'];
+          
+          if (!validCategories.includes(vehicle.category)) {
+            Helper.response("Failed", `Invalid category for additional vehicle ${i + 1}`, {}, res, 200);
+            return;
+          }
+          
+          if (!validSubcategories.includes(vehicle.subcategory)) {
+            Helper.response("Failed", `Invalid subcategory for additional vehicle ${i + 1}`, {}, res, 200);
+            return;
+          }
+          
+          // Ensure rental price is a number
+          if (isNaN(parseFloat(vehicle.rentalPrice)) || parseFloat(vehicle.rentalPrice) < 0) {
+            Helper.response("Failed", `Invalid rental price for additional vehicle ${i + 1}`, {}, res, 200);
+            return;
+          }
+        }
+      } catch (error) {
+        Helper.response("Failed", "Invalid additional vehicles data format", {}, res, 200);
+        return;
+      }
+    }
     var attachment1 = "";
     var attachment2 = "";
     var attachment3 = "";
@@ -267,6 +308,14 @@ RegisterController.registerRental = async (req, res) => {
       subcategory: subcategory || (vehicleType?.toLowerCase() === 'bike' ? 'Bike' : vehicleType?.toLowerCase() === 'scooty' ? 'Scooty' : vehicleType),
       latitude: parseFloat(latitude),
       longitude: parseFloat(longitude),
+      additionalVehicles: parsedAdditionalVehicles.map(vehicle => ({
+        category: vehicle.category,
+        subcategory: vehicle.subcategory,
+        model: vehicle.model,
+        rentalPrice: parseFloat(vehicle.rentalPrice),
+        photo: vehicle.photo || null,
+        addedAt: new Date()
+      }))
     });
     if (newRegister) {
       await newRegister.save();

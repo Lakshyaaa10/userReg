@@ -76,9 +76,54 @@ SearchController.searchVehicles = async (req, res) => {
             const end = new Date(endDate);
             
             // Get all vehicles matching basic criteria
-            const allVehicles = await Register.find(query)
-                .select('Name VehicleModel vehicleType rentalPrice City State VehiclePhoto ContactNo Address')
+            const allRentals = await Register.find(query)
+                .select('Name VehicleModel vehicleType rentalPrice City State VehiclePhoto ContactNo Address additionalVehicles businessName ownerName')
                 .sort({ createdAt: -1 });
+
+            // Flatten vehicles from main field and additionalVehicles array
+            let allVehicles = [];
+            for (const rental of allRentals) {
+                // Add main vehicle
+                if (rental.VehicleModel && rental.vehicleType) {
+                    allVehicles.push({
+                        _id: rental._id,
+                        Name: rental.Name,
+                        VehicleModel: rental.VehicleModel,
+                        vehicleType: rental.vehicleType,
+                        rentalPrice: rental.rentalPrice,
+                        City: rental.City,
+                        State: rental.State,
+                        VehiclePhoto: rental.VehiclePhoto,
+                        ContactNo: rental.ContactNo,
+                        Address: rental.Address,
+                        businessName: rental.businessName,
+                        ownerName: rental.ownerName,
+                        isMainVehicle: true
+                    });
+                }
+
+                // Add additional vehicles
+                if (rental.additionalVehicles && rental.additionalVehicles.length > 0) {
+                    for (const additionalVehicle of rental.additionalVehicles) {
+                        allVehicles.push({
+                            _id: rental._id,
+                            Name: rental.Name,
+                            VehicleModel: additionalVehicle.model,
+                            vehicleType: additionalVehicle.subcategory,
+                            rentalPrice: additionalVehicle.rentalPrice,
+                            City: rental.City,
+                            State: rental.State,
+                            VehiclePhoto: additionalVehicle.photo || rental.VehiclePhoto,
+                            ContactNo: rental.ContactNo,
+                            Address: rental.Address,
+                            businessName: rental.businessName,
+                            ownerName: rental.ownerName,
+                            isMainVehicle: false,
+                            additionalVehicleId: additionalVehicle._id
+                        });
+                    }
+                }
+            }
 
             // Filter by availability
             for (const vehicle of allVehicles) {
@@ -292,17 +337,32 @@ SearchController.getVehiclesByCategory = async (req, res) => {
             const categoryLower = category.toLowerCase();
             
             if (categoryLower === '2-wheeler' || categoryLower === '2wheeler') {
-                query.category = { $in: ['2-wheeler', '2-Wheeler'] };
+                query.$or = [
+                    { category: { $in: ['2-wheeler', '2-Wheeler'] } },
+                    { vehicleType: { $in: ['bike', 'Bike', 'scooty', 'Scooty', 'scooter', 'Scooter'] } }
+                ];
             } else if (categoryLower === '4-wheeler' || categoryLower === '4wheeler') {
-                query.category = { $in: ['4-wheeler', '4-Wheeler'] };
+                query.$or = [
+                    { category: { $in: ['4-wheeler', '4-Wheeler'] } },
+                    { vehicleType: { $in: ['car', 'Car', 'sedan', 'Sedan', 'SUV', 'suv', 'hatchback', 'Hatchback'] } }
+                ];
             } else if (categoryLower === 'bike') {
-                query.category = { $in: ['2-wheeler', '2-Wheeler'] };
+                query.$or = [
+                    { category: { $in: ['2-wheeler', '2-Wheeler'] } },
+                    { vehicleType: { $in: ['bike', 'Bike', 'scooty', 'Scooty', 'scooter', 'Scooter'] } }
+                ];
                 query.subcategory = { $in: ['bike', 'Bike', 'BIKE'] };
             } else if (categoryLower === 'scooty') {
-                query.category = { $in: ['2-wheeler', '2-Wheeler'] };
+                query.$or = [
+                    { category: { $in: ['2-wheeler', '2-Wheeler'] } },
+                    { vehicleType: { $in: ['bike', 'Bike', 'scooty', 'Scooty', 'scooter', 'Scooter'] } }
+                ];
                 query.subcategory = { $in: ['scooty', 'Scooty', 'scooter', 'Scooter'] };
             } else if (categoryLower === 'car') {
-                query.category = { $in: ['4-wheeler', '4-Wheeler'] };
+                query.$or = [
+                    { category: { $in: ['4-wheeler', '4-Wheeler'] } },
+                    { vehicleType: { $in: ['car', 'Car', 'sedan', 'Sedan', 'SUV', 'suv', 'hatchback', 'Hatchback'] } }
+                ];
             } else {
                 // Direct match for specific vehicle types
                 query.vehicleType = { $regex: new RegExp(`^${category}$`, 'i') };
@@ -332,10 +392,74 @@ SearchController.getVehiclesByCategory = async (req, res) => {
             query.longitude = { $ne: null };
         }
 
-        // Get vehicles
-        const allVehicles = await Register.find(query)
-            .select('Name VehicleModel vehicleType category subcategory rentalPrice hourlyPrice City State VehiclePhoto ContactNo Address Landmark Pincode latitude longitude')
+        // Get vehicles from main vehicle field and additionalVehicles array
+        const allRentals = await Register.find(query)
+            .select('Name VehicleModel vehicleType category subcategory rentalPrice hourlyPrice City State VehiclePhoto ContactNo Address Landmark Pincode latitude longitude additionalVehicles businessName ownerName')
             .sort({ createdAt: -1 });
+
+        console.log(`Found ${allRentals.length} rental registrations for category: ${category}`);
+        console.log('Query used:', JSON.stringify(query, null, 2));
+
+        // Flatten vehicles from main field and additionalVehicles array
+        let allVehicles = [];
+        for (const rental of allRentals) {
+            // Add main vehicle
+            if (rental.VehicleModel && rental.vehicleType) {
+                allVehicles.push({
+                    _id: rental._id,
+                    Name: rental.Name,
+                    VehicleModel: rental.VehicleModel,
+                    vehicleType: rental.vehicleType,
+                    category: rental.category,
+                    subcategory: rental.subcategory,
+                    rentalPrice: rental.rentalPrice,
+                    hourlyPrice: rental.hourlyPrice,
+                    City: rental.City,
+                    State: rental.State,
+                    VehiclePhoto: rental.VehiclePhoto,
+                    ContactNo: rental.ContactNo,
+                    Address: rental.Address,
+                    Landmark: rental.Landmark,
+                    Pincode: rental.Pincode,
+                    latitude: rental.latitude,
+                    longitude: rental.longitude,
+                    businessName: rental.businessName,
+                    ownerName: rental.ownerName,
+                    isMainVehicle: true
+                });
+            }
+
+            // Add additional vehicles
+            if (rental.additionalVehicles && rental.additionalVehicles.length > 0) {
+                for (const additionalVehicle of rental.additionalVehicles) {
+                    allVehicles.push({
+                        _id: rental._id,
+                        Name: rental.Name,
+                        VehicleModel: additionalVehicle.model,
+                        vehicleType: additionalVehicle.subcategory,
+                        category: additionalVehicle.category,
+                        subcategory: additionalVehicle.subcategory,
+                        rentalPrice: additionalVehicle.rentalPrice,
+                        hourlyPrice: null,
+                        City: rental.City,
+                        State: rental.State,
+                        VehiclePhoto: additionalVehicle.photo || rental.VehiclePhoto,
+                        ContactNo: rental.ContactNo,
+                        Address: rental.Address,
+                        Landmark: rental.Landmark,
+                        Pincode: rental.Pincode,
+                        latitude: rental.latitude,
+                        longitude: rental.longitude,
+                        businessName: rental.businessName,
+                        ownerName: rental.ownerName,
+                        isMainVehicle: false,
+                        additionalVehicleId: additionalVehicle._id
+                    });
+                }
+            }
+        }
+
+        console.log(`Total vehicles found: ${allVehicles.length} (including additional vehicles)`);
 
         // Filter out vehicles that are currently booked (today onwards)
         const today = new Date();
