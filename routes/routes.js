@@ -11,6 +11,7 @@ const AdminRouter = require('./AdminRouter');
 const EarningsRouter = require('./EarningsRouter');
 const RTORouter = require('./RTORouter');
 const SearchRouter = require('./SearchRouter');
+const VehicleManagementRouter = require('./VehicleManagementRouter');
 
 // Authentication routes
 routes.use("/",AuthRoutes)
@@ -41,6 +42,9 @@ routes.use('/rto', RTORouter)
 
 // Search routes
 routes.use('/search', SearchRouter)
+
+// Vehicle management routes
+routes.use('/reg', VehicleManagementRouter)
 
 routes.use("*", (req, res, next) => {
     res.send("Not Found");

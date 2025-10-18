@@ -141,6 +141,11 @@ const RegisterSchema = new mongoose.Schema({
         type: Number,
         required: false,
         default: null
+    },
+    // Vehicle availability
+    isAvailable: {
+        type: Boolean,
+        default: true
     }
 });
 
