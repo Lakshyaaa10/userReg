@@ -24,6 +24,7 @@ RegisterController.registerVehicle = async (req, res) => {
       subcategory,
       latitude,
       longitude,
+      userId,
     } = req.body;
     const vehiclePhoto =
       req?.files?.vehiclePhoto === undefined ? "" : req?.files?.vehiclePhoto;
@@ -145,6 +146,7 @@ RegisterController.registerVehicle = async (req, res) => {
       subcategory: subcategory || autoSubcategory,
       latitude: parseFloat(latitude),
       longitude: parseFloat(longitude),
+      userId: userId,
     });
     if (newRegister) {
       await newRegister.save();
