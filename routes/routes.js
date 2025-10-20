@@ -44,7 +44,7 @@ routes.use('/rto', RTORouter)
 routes.use('/search', SearchRouter)
 
 // Vehicle management routes
-routes.use('/reg', VehicleManagementRouter)
+routes.use('/veh', VehicleManagementRouter)
 
 routes.use("*", (req, res, next) => {
     res.send("Not Found");

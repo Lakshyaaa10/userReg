@@ -21,3 +21,4 @@ router.put('/toggle-availability/:vehicleId', VehicleManagementController.toggle
 router.get('/vehicle-stats/:vehicleId', VehicleManagementController.getVehicleStats);
 
 module.exports = router;
+

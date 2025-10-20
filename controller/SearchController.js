@@ -184,8 +184,11 @@ SearchController.searchVehicles = async (req, res) => {
                 // Calculate distance using Haversine formula
                 const distance = calculateDistance(userLat, userLon, vehicleLat, vehicleLon);
                 
+                // Check if vehicle is a Mongoose document or plain object
+                const vehicleData = vehicle.toObject ? vehicle.toObject() : vehicle;
+                
                 return {
-                    ...vehicle.toObject(),
+                    ...vehicleData,
                     distance: parseFloat(distance.toFixed(2)) // Distance in km
                 };
             }).filter(vehicle => vehicle.distance <= radiusInKm) // Filter by radius
@@ -490,8 +493,11 @@ SearchController.getVehiclesByCategory = async (req, res) => {
                 const vehicleLon = vehicle.longitude;
                 const distance = calculateDistance(userLat, userLon, vehicleLat, vehicleLon);
                 
+                // Check if vehicle is a Mongoose document or plain object
+                const vehicleData = vehicle.toObject ? vehicle.toObject() : vehicle;
+                
                 return {
-                    ...vehicle.toObject(),
+                    ...vehicleData,
                     distance: parseFloat(distance.toFixed(2))
                 };
             }).filter(vehicle => vehicle.distance <= radiusInKm)
