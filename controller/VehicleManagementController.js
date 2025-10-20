@@ -9,7 +9,6 @@ const VehicleManagementController = {};
 VehicleManagementController.getMyVehicles = async (req, res) => {
     try {
         const { userId } = req.query;
-        
         if (!userId) {
             return Helper.response("Failed", "Missing userId", {}, res, 400);
         }
@@ -267,3 +266,4 @@ VehicleManagementController.getVehicleStats = async (req, res) => {
 };
 
 module.exports = VehicleManagementController;
+
