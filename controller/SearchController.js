@@ -229,7 +229,6 @@ SearchController.getVehicleDetails = async (req, res) => {
         }
 
         const vehicle = await Register.findById(vehicleId)
-            .select('Name VehicleModel vehicleType rentalPrice City State VehiclePhoto ContactNo Address Landmark Pincode gearsProvided');
 
         if (!vehicle) {
             return Helper.response("Failed", "Vehicle not found", {}, res, 404);
