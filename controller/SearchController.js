@@ -494,11 +494,8 @@ SearchController.getVehiclesByCategory = async (req, res) => {
                 const vehicleLon = vehicle.longitude;
                 const distance = calculateDistance(userLat, userLon, vehicleLat, vehicleLon);
 
-                // Check if vehicle is a Mongoose document or plain object
-                const vehicleData = vehicle.toObject ? vehicle.toObject() : vehicle;
-
                 return {
-                    ...vehicleData,
+                    ...vehicle,
                     distance: parseFloat(distance.toFixed(2))
                 };
             }).filter(vehicle => vehicle.distance <= radiusInKm)
