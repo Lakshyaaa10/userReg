@@ -609,4 +609,120 @@ SearchController.getOwnerDetails = async (req, res) => {
     }
 };
 
+// Check vehicle availability for specific date range
+SearchController.checkAvailability = async (req, res) => {
+    try {
+        const { vehicleId, startDate, endDate, pricingType = 'daily' } = req.body;
+
+        // Validation
+        if (!vehicleId || !startDate) {
+            return Helper.response("Failed", "Missing required fields (vehicleId, startDate)", {}, res, 400);
+        }
+
+        // Parse dates
+        const start = new Date(startDate);
+        const end = endDate ? new Date(endDate) : start; // If no end date, check only start date
+
+        // Validate dates
+        if (isNaN(start.getTime())) {
+            return Helper.response("Failed", "Invalid start date format", {}, res, 400);
+        }
+        if (endDate && isNaN(end.getTime())) {
+            return Helper.response("Failed", "Invalid end date format", {}, res, 400);
+        }
+
+        // Check if vehicle exists
+        const vehicle = await Register.findById(vehicleId);
+        if (!vehicle) {
+            return Helper.response("Failed", "Vehicle not found", {}, res, 404);
+        }
+
+        // Check if vehicle is generally available
+        if (vehicle.isAvailable === false) {
+            return Helper.response("Success", "Vehicle availability checked", {
+                isAvailable: false,
+                reason: "Vehicle is currently unavailable",
+                vehicleId: vehicleId,
+                startDate: start,
+                endDate: end,
+                pricingType: pricingType
+            }, res, 200);
+        }
+
+        // Check availability for each day in the range
+        const availabilityIssues = [];
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+            // Skip past dates
+            if (d < today) {
+                continue;
+            }
+
+            // Check availability record
+            const availability = await Availability.findOne({
+                vehicleId: vehicleId,
+                date: d,
+                isAvailable: false
+            });
+
+            if (availability) {
+                availabilityIssues.push({
+                    date: d,
+                    reason: availability.reason || 'unavailable',
+                    customReason: availability.customReason || ''
+                });
+            }
+
+            // Check for active bookings
+            const activeBooking = await Booking.findOne({
+                vehicleId: vehicleId,
+                status: { $in: ['pending', 'accepted', 'in_progress'] },
+                $or: [
+                    {
+                        startDate: { $lte: d },
+                        endDate: { $gte: d }
+                    },
+                    {
+                        startDate: d
+                    }
+                ]
+            });
+
+            if (activeBooking) {
+                availabilityIssues.push({
+                    date: d,
+                    reason: 'booked',
+                    customReason: `Booked by ${activeBooking.renterName}`
+                });
+            }
+        }
+
+        const isAvailable = availabilityIssues.length === 0;
+
+        Helper.response("Success", "Vehicle availability checked", {
+            isAvailable: isAvailable,
+            vehicleId: vehicleId,
+            startDate: start,
+            endDate: end,
+            pricingType: pricingType,
+            availabilityIssues: availabilityIssues,
+            vehicle: {
+                _id: vehicle._id,
+                VehicleModel: vehicle.VehicleModel,
+                vehicleType: vehicle.vehicleType,
+                rentalPrice: vehicle.rentalPrice,
+                hourlyPrice: vehicle.hourlyPrice,
+                City: vehicle.City,
+                State: vehicle.State
+            }
+        }, res, 200);
+
+    } catch (error) {
+        console.error('Check availability error:', error);
+        Helper.response("Failed", "Internal Server Error", error.message, res, 500);
+    }
+};
+
 module.exports = SearchController;
