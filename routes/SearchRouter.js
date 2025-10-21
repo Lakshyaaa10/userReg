@@ -37,4 +37,9 @@ searchRouter.get('/owner/:vehicleId', (req, res, next) => {
     SearchController.getOwnerDetails(req, res, next);
 });
 
+// Check vehicle availability
+searchRouter.post('/check-availability', (req, res, next) => {
+    SearchController.checkAvailability(req, res, next);
+});
+
 module.exports = searchRouter;
