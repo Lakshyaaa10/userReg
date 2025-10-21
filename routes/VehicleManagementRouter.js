@@ -20,5 +20,11 @@ router.put('/toggle-availability/:vehicleId', VehicleManagementController.toggle
 // Get vehicle statistics
 router.get('/vehicle-stats/:vehicleId', VehicleManagementController.getVehicleStats);
 
+// Debug endpoint
+router.get('/debug-all-vehicles', VehicleManagementController.getAllVehiclesDebug);
+
+// Fix vehicles with null userId
+router.post('/fix-null-userid', VehicleManagementController.fixNullUserIdVehicles);
+
 module.exports = router;
 

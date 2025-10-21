@@ -9,13 +9,57 @@ const VehicleManagementController = {};
 VehicleManagementController.getMyVehicles = async (req, res) => {
     try {
         const { userId } = req.query;
+        
+        console.log('Received userId:', userId);
+        console.log('Type of userId:', typeof userId);
+        
         if (!userId) {
             return Helper.response("Failed", "Missing userId", {}, res, 400);
         }
 
-        const vehicles = await Register.find({ userId: userId })
+        // Try to find vehicles with userId as string first
+        let vehicles = await Register.find({ userId: userId })
             .sort({ createdAt: -1 })
             .select('-__v');
+
+        console.log('Found vehicles with string userId:', vehicles.length);
+
+        // If no vehicles found, try with ObjectId
+        if (vehicles.length === 0) {
+            const mongoose = require('mongoose');
+            try {
+                const objectIdUserId = new mongoose.Types.ObjectId(userId);
+                vehicles = await Register.find({ userId: objectIdUserId })
+                    .sort({ createdAt: -1 })
+                    .select('-__v');
+                console.log('Found vehicles with ObjectId userId:', vehicles.length);
+            } catch (objectIdError) {
+                console.log('Invalid ObjectId format:', objectIdError.message);
+            }
+        }
+
+        // If still no vehicles found, check if user has vehicles with null userId
+        // This handles cases where vehicles were registered before userId was properly set
+        if (vehicles.length === 0) {
+            console.log('Checking for vehicles with null userId for user:', userId);
+            // For now, we'll skip vehicles with null userId as they can't be properly attributed to a user
+            // In a real scenario, you might want to update these vehicles with the correct userId
+        }
+
+        // If still no vehicles, try to find all vehicles to debug
+        if (vehicles.length === 0) {
+            const allVehicles = await Register.find({})
+                .sort({ createdAt: -1 })
+                .select('userId Name VehicleModel')
+                .limit(5);
+            console.log('Sample vehicles in database:', allVehicles.map(v => ({
+                id: v._id,
+                userId: v.userId,
+                userIdType: typeof v.userId,
+                name: v.Name,
+                model: v.VehicleModel
+            })));
+        }
 
         Helper.response("Success", "Vehicles retrieved successfully", vehicles, res, 200);
 
@@ -261,6 +305,94 @@ VehicleManagementController.getVehicleStats = async (req, res) => {
 
     } catch (error) {
         console.error('Get vehicle stats error:', error);
+        Helper.response("Failed", "Internal Server Error", error.message, res, 500);
+    }
+};
+
+// Debug endpoint to see all vehicles
+VehicleManagementController.getAllVehiclesDebug = async (req, res) => {
+    try {
+        const allVehicles = await Register.find({})
+            .sort({ createdAt: -1 })
+            .select('userId Name VehicleModel category vehicleType')
+            .limit(10);
+
+        console.log('All vehicles in database:', allVehicles.map(v => ({
+            id: v._id,
+            userId: v.userId,
+            userIdType: typeof v.userId,
+            name: v.Name,
+            model: v.VehicleModel,
+            category: v.category,
+            vehicleType: v.vehicleType
+        })));
+
+        Helper.response("Success", "Debug data retrieved", {
+            totalVehicles: allVehicles.length,
+            vehicles: allVehicles.map(v => ({
+                id: v._id,
+                userId: v.userId,
+                userIdType: typeof v.userId,
+                name: v.Name,
+                model: v.VehicleModel,
+                category: v.category,
+                vehicleType: v.vehicleType
+            }))
+        }, res, 200);
+
+    } catch (error) {
+        console.error('Debug error:', error);
+        Helper.response("Failed", "Internal Server Error", error.message, res, 500);
+    }
+};
+
+// Utility endpoint to fix vehicles with null userId
+VehicleManagementController.fixNullUserIdVehicles = async (req, res) => {
+    try {
+        const { userId, vehicleId } = req.body;
+        
+        if (!userId) {
+            return Helper.response("Failed", "Missing userId", {}, res, 400);
+        }
+
+        let query = {};
+        if (vehicleId) {
+            query._id = vehicleId;
+        } else {
+            query.userId = null;
+        }
+
+        const vehiclesToUpdate = await Register.find(query);
+        console.log(`Found ${vehiclesToUpdate.length} vehicles to update`);
+
+        if (vehiclesToUpdate.length === 0) {
+            return Helper.response("Success", "No vehicles with null userId found", {}, res, 200);
+        }
+
+        // Update vehicles with the provided userId
+        const updateResult = await Register.updateMany(
+            query,
+            { 
+                $set: { 
+                    userId: userId,
+                    updatedAt: new Date()
+                } 
+            }
+        );
+
+        console.log(`Updated ${updateResult.modifiedCount} vehicles with userId: ${userId}`);
+
+        Helper.response("Success", `Updated ${updateResult.modifiedCount} vehicles with userId`, {
+            modifiedCount: updateResult.modifiedCount,
+            vehiclesUpdated: vehiclesToUpdate.map(v => ({
+                id: v._id,
+                name: v.Name,
+                model: v.VehicleModel
+            }))
+        }, res, 200);
+
+    } catch (error) {
+        console.error('Fix null userId error:', error);
         Helper.response("Failed", "Internal Server Error", error.message, res, 500);
     }
 };

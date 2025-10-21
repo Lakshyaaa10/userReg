@@ -10,7 +10,7 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
     const R = 6371; // Radius of the Earth in kilometers
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = 
+    const a =
         Math.sin(dLat / 2) * Math.sin(dLat / 2) +
         Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
         Math.sin(dLon / 2) * Math.sin(dLon / 2);
@@ -22,18 +22,18 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 // Search vehicles with filters
 SearchController.searchVehicles = async (req, res) => {
     try {
-        const { 
-            city, 
-            startDate, 
-            endDate, 
-            vehicleType, 
-            minPrice, 
+        const {
+            city,
+            startDate,
+            endDate,
+            vehicleType,
+            minPrice,
             maxPrice,
             latitude,
             longitude,
             radius = 50, // Default radius in kilometers
-            page = 1, 
-            limit = 20 
+            page = 1,
+            limit = 20
         } = req.query;
 
         const skip = (page - 1) * limit;
@@ -61,7 +61,7 @@ SearchController.searchVehicles = async (req, res) => {
             const userLat = parseFloat(latitude);
             const userLon = parseFloat(longitude);
             const radiusInKm = parseFloat(radius);
-            
+
             // Ensure latitude and longitude are not null in the database
             query.latitude = { $ne: null };
             query.longitude = { $ne: null };
@@ -69,12 +69,12 @@ SearchController.searchVehicles = async (req, res) => {
 
         // Get available vehicles
         let availableVehicles = [];
-        
+
         if (startDate && endDate) {
             // Check availability for date range
             const start = new Date(startDate);
             const end = new Date(endDate);
-            
+
             // Get all vehicles matching basic criteria
             const allRentals = await Register.find(query)
                 .select('Name VehicleModel vehicleType rentalPrice City State VehiclePhoto ContactNo Address additionalVehicles businessName ownerName')
@@ -128,20 +128,20 @@ SearchController.searchVehicles = async (req, res) => {
             // Filter by availability
             for (const vehicle of allVehicles) {
                 let isAvailable = true;
-                
+
                 for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
                     const availability = await Availability.findOne({
                         vehicleId: vehicle._id,
                         date: d,
                         isAvailable: false
                     });
-                    
+
                     if (availability) {
                         isAvailable = false;
                         break;
                     }
                 }
-                
+
                 if (isAvailable) {
                     availableVehicles.push(vehicle);
                 }
@@ -155,7 +155,7 @@ SearchController.searchVehicles = async (req, res) => {
             // Filter out vehicles that are currently booked (today onwards)
             const today = new Date();
             today.setHours(0, 0, 0, 0); // Start of today
-            
+
             availableVehicles = [];
             for (const vehicle of allVehicles) {
                 // Check if vehicle has any active bookings
@@ -164,7 +164,7 @@ SearchController.searchVehicles = async (req, res) => {
                     status: { $in: ['pending', 'accepted', 'in_progress'] },
                     endDate: { $gte: today }
                 });
-                
+
                 if (!activeBooking) {
                     availableVehicles.push(vehicle);
                 }
@@ -176,23 +176,23 @@ SearchController.searchVehicles = async (req, res) => {
             const userLat = parseFloat(latitude);
             const userLon = parseFloat(longitude);
             const radiusInKm = parseFloat(radius);
-            
+
             availableVehicles = availableVehicles.map(vehicle => {
                 const vehicleLat = vehicle.latitude;
                 const vehicleLon = vehicle.longitude;
-                
+
                 // Calculate distance using Haversine formula
                 const distance = calculateDistance(userLat, userLon, vehicleLat, vehicleLon);
-                
+
                 // Check if vehicle is a Mongoose document or plain object
                 const vehicleData = vehicle.toObject ? vehicle.toObject() : vehicle;
-                
+
                 return {
                     ...vehicleData,
                     distance: parseFloat(distance.toFixed(2)) // Distance in km
                 };
             }).filter(vehicle => vehicle.distance <= radiusInKm) // Filter by radius
-              .sort((a, b) => a.distance - b.distance); // Sort by distance (nearest first)
+                .sort((a, b) => a.distance - b.distance); // Sort by distance (nearest first)
         }
 
         // Pagination
@@ -222,8 +222,8 @@ SearchController.searchVehicles = async (req, res) => {
 // Get vehicle details by ID
 SearchController.getVehicleDetails = async (req, res) => {
     try {
-        const { vehicleId } = req.params;
 
+        const { vehicleId } = req.params;
         if (!vehicleId) {
             return Helper.response("Failed", "Missing vehicleId", {}, res, 400);
         }
@@ -238,8 +238,10 @@ SearchController.getVehicleDetails = async (req, res) => {
         // Get availability for next 30 days
         const availability = await Availability.find({
             vehicleId: vehicleId,
-            date: { $gte: new Date() },
-            $lte: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+            date: {
+                $gte: new Date(),
+                $lte: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+            }
         }).select('date isAvailable reason');
 
         Helper.response("Success", "Vehicle details retrieved successfully", {
@@ -319,7 +321,7 @@ SearchController.getVehicleTypes = async (req, res) => {
 // Get vehicles by category with enhanced filtering
 SearchController.getVehiclesByCategory = async (req, res) => {
     try {
-        const { 
+        const {
             category = 'all',
             subcategory,
             city,
@@ -338,7 +340,7 @@ SearchController.getVehiclesByCategory = async (req, res) => {
         // Category filter (2-wheeler or 4-wheeler)
         if (category && category !== 'all' && category !== 'All') {
             const categoryLower = category.toLowerCase();
-            
+
             if (categoryLower === '2-wheeler' || categoryLower === '2wheeler') {
                 query.$or = [
                     { category: { $in: ['2-wheeler', '2-Wheeler'] } },
@@ -467,7 +469,7 @@ SearchController.getVehiclesByCategory = async (req, res) => {
         // Filter out vehicles that are currently booked (today onwards)
         const today = new Date();
         today.setHours(0, 0, 0, 0); // Start of today
-        
+
         let vehicles = [];
         for (const vehicle of allVehicles) {
             // Check if vehicle has any active bookings
@@ -476,7 +478,7 @@ SearchController.getVehiclesByCategory = async (req, res) => {
                 status: { $in: ['pending', 'accepted', 'in_progress'] },
                 endDate: { $gte: today }
             });
-            
+
             if (!activeBooking) {
                 vehicles.push(vehicle);
             }
@@ -487,21 +489,21 @@ SearchController.getVehiclesByCategory = async (req, res) => {
             const userLat = parseFloat(latitude);
             const userLon = parseFloat(longitude);
             const radiusInKm = parseFloat(radius);
-            
+
             vehicles = vehicles.map(vehicle => {
                 const vehicleLat = vehicle.latitude;
                 const vehicleLon = vehicle.longitude;
                 const distance = calculateDistance(userLat, userLon, vehicleLat, vehicleLon);
-                
+
                 // Check if vehicle is a Mongoose document or plain object
                 const vehicleData = vehicle.toObject ? vehicle.toObject() : vehicle;
-                
+
                 return {
                     ...vehicleData,
                     distance: parseFloat(distance.toFixed(2))
                 };
             }).filter(vehicle => vehicle.distance <= radiusInKm)
-              .sort((a, b) => a.distance - b.distance);
+                .sort((a, b) => a.distance - b.distance);
         }
 
         // Pagination
