@@ -168,6 +168,9 @@ RegisterController.registerRental = async (req, res) => {
     const body = req.body || {};
     const businessName = body.businessName || body.BusinessName;
     const ownerName = body.ownerName || body.OwnerName;
+    const nameForRegister = body.name || body.Name || ownerName || '';
+    const ageForRegister = body.age || body.Age;
+    const returnDurationForRegister = body.returnDuration || body.ReturnDuration || '5 days';
     const address = body.address || body.Address;
     const landmark = body.landmark || body.Landmark || "";
     const pincode = body.pincode || body.Pincode;
@@ -288,6 +291,10 @@ RegisterController.registerRental = async (req, res) => {
       var attachment3 = upload;
     }
     const newRegister = new Register({
+      // Fields required by shared Register model
+      Name: nameForRegister,
+      Age: ageForRegister ? parseInt(ageForRegister) : 0,
+      ReturnDuration: returnDurationForRegister,
       businessName: businessName,
       ownerName: ownerName,
       Address: address,
