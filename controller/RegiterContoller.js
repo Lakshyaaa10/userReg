@@ -164,33 +164,32 @@ RegisterController.registerVehicle = async (req, res) => {
 };
 RegisterController.registerRental = async (req, res) => {
   try {
-    const {
-      businessName,
-      ownerName,
-      address,
-      landmark,
-      pincode,
-      city,
-      state,
-      contact,
-      vehicleModel,
-      rentalPrice,
-      hourlyPrice,
-      gearsProvided,
-      agreed,
-      vehicleType,
-      category,
-      subcategory,
-      latitude,
-      longitude,
-      additionalVehicles
-    } = req.body;
-    const vehiclePhoto =
-      req?.files?.vehiclePhoto === undefined ? "" : req?.files?.vehiclePhoto;
-    const vehicleRegistration =
-      req?.files?.addressPhoto === undefined ? "" : req?.files?.addressPhoto;
-    const licencePhoto =
-      req?.files?.vehicleRC === undefined ? "" : req?.files?.vehicleRC;
+    // Accept both camelCase and capitalized keys from clients
+    const body = req.body || {};
+    const businessName = body.businessName || body.BusinessName;
+    const ownerName = body.ownerName || body.OwnerName;
+    const address = body.address || body.Address;
+    const landmark = body.landmark || body.Landmark || "";
+    const pincode = body.pincode || body.Pincode;
+    const city = body.city || body.City;
+    const state = body.state || body.State;
+    const contact = body.contact || body.ContactNo || body.Contact || body.contactNo;
+    const vehicleModel = body.vehicleModel || body.VehicleModel;
+    const rentalPrice = body.rentalPrice;
+    const hourlyPrice = body.hourlyPrice;
+    const gearsProvided = body.gearsProvided || body.GearsProvided || "";
+    const agreed = (body.agreed !== undefined ? body.agreed : body.AgreedToTerms);
+    const vehicleType = body.vehicleType || body.VehicleType;
+    const category = body.category || body.Category;
+    const subcategory = body.subcategory || body.Subcategory;
+    const latitude = body.latitude || body.Latitude;
+    const longitude = body.longitude || body.Longitude;
+    const additionalVehicles = body.additionalVehicles;
+
+    // Correct file fields expected from client
+    const vehiclePhoto = req?.files?.vehiclePhoto === undefined ? "" : req?.files?.vehiclePhoto;
+    const vehicleRegistration = req?.files?.vehicleRegistration === undefined ? "" : req?.files?.vehicleRegistration;
+    const licencePhoto = req?.files?.licencePhoto === undefined ? "" : req?.files?.licencePhoto;
     
 
     if (
@@ -205,7 +204,7 @@ RegisterController.registerRental = async (req, res) => {
       !vehicleModel ||
       !rentalPrice ||
       !agreed ||
-      !gearsProvided||
+      // gearsProvided is optional per model, do not require
       !vehicleType ||
       !latitude ||
       !longitude
@@ -281,11 +280,11 @@ RegisterController.registerRental = async (req, res) => {
       var attachment1 = upload;
     }
     if (vehicleRegistration) {
-      const upload = await Helper.uploadVehicle(addressPhoto);
+      const upload = await Helper.uploadVehicle(vehicleRegistration);
       var attachment2 = upload;
     }
     if (licencePhoto) {
-      const upload =await Helper.uploadVehicle(vehicleRC);
+      const upload =await Helper.uploadVehicle(licencePhoto);
       var attachment3 = upload;
     }
     const newRegister = new Register({
@@ -303,8 +302,8 @@ RegisterController.registerRental = async (req, res) => {
       VehicleModel: vehicleModel,
       rentalPrice: rentalPrice,
       hourlyPrice: hourlyPrice ? parseFloat(hourlyPrice) : null,
-      gearsProvided:gearsProvided,
-      AgreedToTerms: agreed==1?true:false,
+      gearsProvided: gearsProvided || "",
+      AgreedToTerms: (agreed===true || agreed===1 || agreed==='1') ? true : false,
       vehicleType: vehicleType,
       category: category || (vehicleType?.toLowerCase().includes('car') || vehicleType?.toLowerCase().includes('sedan') || vehicleType?.toLowerCase().includes('suv') || vehicleType?.toLowerCase().includes('hatchback') ? '4-wheeler' : '2-wheeler'),
       subcategory: subcategory || (vehicleType?.toLowerCase() === 'bike' ? 'Bike' : vehicleType?.toLowerCase() === 'scooty' ? 'Scooty' : vehicleType),
