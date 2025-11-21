@@ -7,8 +7,18 @@ const express  = require('express');
  const mongoose = require("mongoose");
  const multer = require('multer');
  const fileUpload = require("express-fileupload");
+ const cors = require('cors');
  const upload = multer({ storage: multer.memoryStorage() });
    // connectDb()
+   
+   // Enable CORS for all origins
+   app.use(cors({
+     origin: '*', // Allow all origins - change this in production to specific domains
+     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+     allowedHeaders: ['Content-Type', 'Authorization'],
+     credentials: true
+   }));
+   
    app.use(express.json());
    app.use(express.urlencoded({ extended: true }));
    mongoose.connect('mongodb+srv://lakshya:lakshya1234@userreg.qjnxhvm.mongodb.net/', {
