@@ -1,5 +1,6 @@
 const Helper = require("../Helper/Helper");
 const Register = require("../Models/RegisterModel");
+const registerRental = require("../Models/registerRentalModel");
 
 const RegisterController = {};
 
@@ -290,7 +291,7 @@ RegisterController.registerRental = async (req, res) => {
       const upload =await Helper.uploadVehicle(licencePhoto);
       var attachment3 = upload;
     }
-    const newRegister = new Register({
+    const newRegister = new registerRental({
       // Fields required by shared Register model
       Name: nameForRegister,
       Age: ageForRegister ? parseInt(ageForRegister) : 0,
