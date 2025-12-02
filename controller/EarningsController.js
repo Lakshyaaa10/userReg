@@ -26,7 +26,7 @@ EarningsController.getOwnerEarnings = async (req, res) => {
 
         const earnings = await Earnings.find(query)
             .populate('bookingId', 'renterName vehicleModel startDate endDate')
-            .populate('vehicleId', 'VehicleModel vehicleType')
+            .populate('vehicleId', 'vehicleModel vehicleType')
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(parseInt(limit));
@@ -180,7 +180,7 @@ EarningsController.getTopPerformingVehicles = async (req, res) => {
             },
             {
                 $lookup: {
-                    from: 'registers',
+                    from: 'registeredvehicles',
                     localField: '_id',
                     foreignField: '_id',
                     as: 'vehicleDetails'
@@ -192,7 +192,7 @@ EarningsController.getTopPerformingVehicles = async (req, res) => {
             {
                 $project: {
                     vehicleId: '$_id',
-                    vehicleModel: '$vehicleDetails.VehicleModel',
+                    vehicleModel: '$vehicleDetails.vehicleModel',
                     vehicleType: '$vehicleDetails.vehicleType',
                     totalEarnings: 1,
                     totalTrips: 1,

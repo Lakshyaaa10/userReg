@@ -29,12 +29,21 @@ BookingController.createBooking = async (req, res) => {
             return Helper.response("Failed", "Missing required fields", {}, res, 400);
         }
 
-        // Get vehicle details
-        const Register = require('../Models/RegisterModel');
-        const vehicle = await Register.findById(vehicleId);
+        // Get vehicle details from RegisteredVehicles
+        const RegisteredVehicles = require('../Models/RegisteredVehicles');
+        const vehicle = await RegisteredVehicles.findById(vehicleId)
+            .populate('registerId', 'Name ContactNo')
+            .populate('rentalId', 'ownerName ContactNo');
+        
         if (!vehicle) {
             return Helper.response("Failed", "Vehicle not found", {}, res, 404);
         }
+        
+        // Get owner details from registerId or rentalId
+        const register = vehicle.registerId || {};
+        const rental = vehicle.rentalId || {};
+        const ownerName = register.Name || rental.ownerName || 'N/A';
+        const ownerPhone = register.ContactNo || rental.ContactNo || 'N/A';
 
         // Check availability
         const start = new Date(startDate);
@@ -63,13 +72,13 @@ BookingController.createBooking = async (req, res) => {
             renterName,
             renterPhone,
             renterEmail,
-            ownerId: vehicle._id,
-            ownerName: vehicle.Name,
-            ownerPhone: vehicle.ContactNo,
+            ownerId: vehicle.userId, // Use userId from RegisteredVehicles
+            ownerName: ownerName,
+            ownerPhone: ownerPhone,
             vehicleId,
-            vehicleModel: vehicle.VehicleModel,
+            vehicleModel: vehicle.vehicleModel,
             vehicleType: vehicle.vehicleType,
-            vehiclePhoto: vehicle.VehiclePhoto,
+            vehiclePhoto: vehicle.vehiclePhoto,
             startDate: start,
             endDate: end,
             totalDays,
@@ -102,9 +111,9 @@ BookingController.createBooking = async (req, res) => {
 
         // Create notification for owner
         const ownerNotification = new Notification({
-            userId: vehicle._id, // Assuming owner has a user account
+            userId: vehicle.userId, // Use userId from RegisteredVehicles
             title: "New Booking Request",
-            message: `${renterName} wants to book your ${vehicle.VehicleModel} from ${startDate} to ${endDate}`,
+            message: `${renterName} wants to book your ${vehicle.vehicleModel} from ${startDate} to ${endDate}`,
             type: "booking_request",
             relatedId: savedBooking._id,
             relatedType: "booking"
@@ -115,7 +124,7 @@ BookingController.createBooking = async (req, res) => {
         const renterNotification = new Notification({
             userId: renterId,
             title: "Booking Request Sent",
-            message: `Your booking request for ${vehicle.VehicleModel} has been sent to the owner`,
+            message: `Your booking request for ${vehicle.vehicleModel} has been sent to the owner`,
             type: "booking_request",
             relatedId: savedBooking._id,
             relatedType: "booking"
@@ -148,7 +157,7 @@ BookingController.getUserBookings = async (req, res) => {
 
         const bookings = await Booking.find(query)
             .sort({ createdAt: -1 })
-            .populate('vehicleId', 'VehicleModel vehicleType VehiclePhoto')
+            .populate('vehicleId', 'vehicleModel vehicleType vehiclePhoto')
             .populate('renterId', 'mobile email');
 
         Helper.response("Success", "Bookings retrieved successfully", bookings, res, 200);
@@ -170,7 +179,7 @@ BookingController.getRenterBookings = async (req, res) => {
 
         const bookings = await Booking.find({ renterId: renterId })
             .sort({ createdAt: -1 })
-            .populate('vehicleId', 'VehicleModel vehicleType VehiclePhoto')
+            .populate('vehicleId', 'vehicleModel vehicleType vehiclePhoto')
             .populate('renterId', 'mobile email username');
 
         Helper.response("Success", "Renter bookings retrieved successfully", bookings, res, 200);
@@ -192,7 +201,7 @@ BookingController.getOwnerBookings = async (req, res) => {
 
         const bookings = await Booking.find({ ownerId: ownerId })
             .sort({ createdAt: -1 })
-            .populate('vehicleId', 'VehicleModel vehicleType VehiclePhoto')
+            .populate('vehicleId', 'vehicleModel vehicleType vehiclePhoto')
             .populate('renterId', 'mobile email username');
 
         Helper.response("Success", "Owner bookings retrieved successfully", bookings, res, 200);
