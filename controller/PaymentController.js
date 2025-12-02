@@ -208,13 +208,23 @@ PaymentController.createOfflineBooking = async (req, res) => {
             return Helper.response("Failed", "Missing required fields", {}, res, 400);
         }
 
-        // Verify vehicle exists and get owner details
-        const vehicle = await Register.findById(vehicleId);
+        // Verify vehicle exists and get owner details from RegisteredVehicles
+        const RegisteredVehicles = require('../Models/RegisteredVehicles');
+        const vehicle = await RegisteredVehicles.findById(vehicleId)
+            .populate('registerId', 'Name ContactNo')
+            .populate('rentalId', 'ownerName ContactNo');
+        
         if (!vehicle) {
             return Helper.response("Failed", "Vehicle not found", {}, res, 404);
         }
-       console.log(vehicle.userId);
-        // Get owner details from User model
+        
+        // Get owner details from registerId or rentalId
+        const register = vehicle.registerId || {};
+        const rental = vehicle.rentalId || {};
+        const ownerName = register.Name || rental.ownerName || 'Unknown Owner';
+        const ownerPhone = register.ContactNo || rental.ContactNo || 'N/A';
+        
+        // Get owner user details from User model
         const owner = await User.findById(vehicle.userId);
         if (!owner) {
             return Helper.response("Failed", "Vehicle owner not found", {}, res, 404);
@@ -228,11 +238,11 @@ PaymentController.createOfflineBooking = async (req, res) => {
             renterEmail,
             vehicleId,
             ownerId: vehicle.userId, // Use ownerId as required by schema
-            ownerName: owner.name || 'Unknown Owner',
-            ownerPhone: owner.contact || owner.phone || 'N/A',
-            vehicleModel: vehicle.VehicleModel || 'Unknown Model',
+            ownerName: ownerName,
+            ownerPhone: ownerPhone,
+            vehicleModel: vehicle.vehicleModel || 'Unknown Model',
             vehicleType: vehicle.vehicleType || 'bike',
-            vehiclePhoto: vehicle.VehiclePhoto || '',
+            vehiclePhoto: vehicle.vehiclePhoto || '',
             startDate: new Date(startDate),
             endDate: new Date(endDate),
             totalDays: parseInt(totalDays),

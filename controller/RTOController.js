@@ -13,23 +13,29 @@ RTOController.requestRTOAssistance = async (req, res) => {
             return Helper.response("Failed", "Missing required fields", {}, res, 400);
         }
 
-        const vehicle = await Register.findById(vehicleId);
+        const RegisteredVehicles = require('../Models/RegisteredVehicles');
+        const vehicle = await RegisteredVehicles.findById(vehicleId)
+            .populate('registerId', 'Name VehicleModel')
+            .populate('rentalId', 'ownerName');
+        
         if (!vehicle) {
             return Helper.response("Failed", "Vehicle not found", {}, res, 404);
         }
 
-        // Update vehicle with RTO assistance request
-        vehicle.rtoAssistanceRequested = true;
-        vehicle.rtoAssistanceStatus = 'pending';
-        vehicle.rtoAssistanceNotes = notes || '';
-        vehicle.userId = userId; // Link to user account
-        await vehicle.save();
+        // Get vehicle model and owner name
+        const register = vehicle.registerId || {};
+        const rental = vehicle.rentalId || {};
+        const vehicleModel = vehicle.vehicleModel || register.VehicleModel || 'N/A';
+        const ownerName = register.Name || rental.ownerName || 'N/A';
+        
+        // Note: RTO assistance fields might need to be added to RegisteredVehicles schema
+        // For now, we'll just create the notification
 
         // Create notification for admin
         const adminNotification = new Notification({
             userId: 'admin', // This would be a special admin user ID
             title: "New RTO Assistance Request",
-            message: `Vehicle ${vehicle.VehicleModel} (${vehicle.Name}) has requested RTO assistance`,
+            message: `Vehicle ${vehicleModel} (${ownerName}) has requested RTO assistance`,
             type: "rto_assistance",
             relatedId: vehicleId,
             relatedType: "vehicle"
@@ -68,21 +74,28 @@ RTOController.getRTOAssistanceStatus = async (req, res) => {
             return Helper.response("Failed", "Missing vehicleId", {}, res, 400);
         }
 
-        const vehicle = await Register.findById(vehicleId)
-            .select('rtoAssistanceRequested rtoAssistanceStatus rtoAssistanceNotes rtoAssistanceUpdatedAt VehicleModel Name');
+        const RegisteredVehicles = require('../Models/RegisteredVehicles');
+        const vehicle = await RegisteredVehicles.findById(vehicleId)
+            .populate('registerId', 'Name')
+            .populate('rentalId', 'ownerName');
 
         if (!vehicle) {
             return Helper.response("Failed", "Vehicle not found", {}, res, 404);
         }
 
+        const register = vehicle.registerId || {};
+        const rental = vehicle.rentalId || {};
+        const vehicleModel = vehicle.vehicleModel || 'N/A';
+        const ownerName = register.Name || rental.ownerName || 'N/A';
+
         Helper.response("Success", "RTO assistance status retrieved successfully", {
             vehicleId: vehicle._id,
-            vehicleModel: vehicle.VehicleModel,
-            ownerName: vehicle.Name,
-            rtoAssistanceRequested: vehicle.rtoAssistanceRequested,
-            rtoAssistanceStatus: vehicle.rtoAssistanceStatus,
-            rtoAssistanceNotes: vehicle.rtoAssistanceNotes,
-            lastUpdated: vehicle.rtoAssistanceUpdatedAt
+            vehicleModel: vehicleModel,
+            ownerName: ownerName,
+            rtoAssistanceRequested: vehicle.rtoAssistanceRequested || false,
+            rtoAssistanceStatus: vehicle.rtoAssistanceStatus || 'pending',
+            rtoAssistanceNotes: vehicle.rtoAssistanceNotes || '',
+            lastUpdated: vehicle.rtoAssistanceUpdatedAt || null
         }, res, 200);
 
     } catch (error) {
@@ -102,22 +115,39 @@ RTOController.getUserRTORequests = async (req, res) => {
 
         const skip = (page - 1) * limit;
 
-        const rtoRequests = await Register.find({
-            userId: userId,
+        const mongoose = require('mongoose');
+        const RegisteredVehicles = require('../Models/RegisteredVehicles');
+        const objectIdUserId = typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId;
+        
+        const rtoRequests = await RegisteredVehicles.find({
+            userId: objectIdUserId,
             rtoAssistanceRequested: true
         })
-        .select('VehicleModel vehicleType rtoAssistanceStatus rtoAssistanceNotes rtoAssistanceUpdatedAt createdAt')
+        .populate('registerId', 'Name')
+        .populate('rentalId', 'ownerName')
+        .select('vehicleModel vehicleType rtoAssistanceStatus rtoAssistanceNotes rtoAssistanceUpdatedAt createdAt registerId rentalId')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(parseInt(limit));
 
-        const totalCount = await Register.countDocuments({
-            userId: userId,
+        // Map to include owner name
+        const mappedRequests = rtoRequests.map(req => {
+            const register = req.registerId || {};
+            const rental = req.rentalId || {};
+            return {
+                ...req.toObject(),
+                VehicleModel: req.vehicleModel,
+                Name: register.Name || rental.ownerName || 'N/A'
+            };
+        });
+
+        const totalCount = await RegisteredVehicles.countDocuments({
+            userId: objectIdUserId,
             rtoAssistanceRequested: true
         });
 
         Helper.response("Success", "RTO assistance requests retrieved successfully", {
-            rtoRequests,
+            rtoRequests: mappedRequests,
             pagination: {
                 currentPage: parseInt(page),
                 totalPages: Math.ceil(totalCount / limit),

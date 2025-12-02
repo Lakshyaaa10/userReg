@@ -1,4 +1,5 @@
 const Helper = require('../Helper/Helper');
+const RegisteredVehicles = require('../Models/RegisteredVehicles');
 const Register = require('../Models/RegisterModel');
 const Booking = require('../Models/BookingModel');
 const Availability = require('../Models/AvailabilityModel');
@@ -17,51 +18,41 @@ VehicleManagementController.getMyVehicles = async (req, res) => {
             return Helper.response("Failed", "Missing userId", {}, res, 400);
         }
 
-        // Try to find vehicles with userId as string first
-        let vehicles = await Register.find({ userId: userId })
+        // Use RegisteredVehicles as primary model
+        const mongoose = require('mongoose');
+        let objectIdUserId;
+        try {
+            objectIdUserId = typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId;
+        } catch (objectIdError) {
+            return Helper.response("Failed", "Invalid userId format", {}, res, 400);
+        }
+
+        // Find vehicles from RegisteredVehicles model
+        let vehicles = await RegisteredVehicles.find({ userId: objectIdUserId })
+            .populate('registerId', 'Name Age Address Landmark Pincode City State ContactNo')
+            .populate('rentalId', 'businessName ownerName Address Landmark Pincode City State ContactNo')
             .sort({ createdAt: -1 })
             .select('-__v');
 
-        console.log('Found vehicles with string userId:', vehicles.length);
+        console.log('Found vehicles with userId:', vehicles.length);
 
-        // If no vehicles found, try with ObjectId
-        if (vehicles.length === 0) {
-            const mongoose = require('mongoose');
-            try {
-                const objectIdUserId = new mongoose.Types.ObjectId(userId);
-                vehicles = await Register.find({ userId: objectIdUserId })
-                    .sort({ createdAt: -1 })
-                    .select('-__v');
-                console.log('Found vehicles with ObjectId userId:', vehicles.length);
-            } catch (objectIdError) {
-                console.log('Invalid ObjectId format:', objectIdError.message);
-            }
-        }
+        // Map vehicles to include owner details from registerId or rentalId
+        const mappedVehicles = vehicles.map(vehicle => {
+            const register = vehicle.registerId || {};
+            const rental = vehicle.rentalId || {};
+            return {
+                ...vehicle.toObject(),
+                Name: register.Name || rental.ownerName || 'N/A',
+                VehicleModel: vehicle.vehicleModel,
+                City: register.City || rental.City || 'N/A',
+                State: register.State || rental.State || 'N/A',
+                Address: register.Address || rental.Address || 'N/A',
+                ContactNo: register.ContactNo || rental.ContactNo || 'N/A',
+                Pincode: register.Pincode || rental.Pincode || 'N/A',
+            };
+        });
 
-        // If still no vehicles found, check if user has vehicles with null userId
-        // This handles cases where vehicles were registered before userId was properly set
-        if (vehicles.length === 0) {
-            console.log('Checking for vehicles with null userId for user:', userId);
-            // For now, we'll skip vehicles with null userId as they can't be properly attributed to a user
-            // In a real scenario, you might want to update these vehicles with the correct userId
-        }
-
-        // If still no vehicles, try to find all vehicles to debug
-        if (vehicles.length === 0) {
-            const allVehicles = await Register.find({})
-                .sort({ createdAt: -1 })
-                .select('userId Name VehicleModel')
-                .limit(5);
-            console.log('Sample vehicles in database:', allVehicles.map(v => ({
-                id: v._id,
-                userId: v.userId,
-                userIdType: typeof v.userId,
-                name: v.Name,
-                model: v.VehicleModel
-            })));
-        }
-
-        Helper.response("Success", "Vehicles retrieved successfully", vehicles, res, 200);
+        Helper.response("Success", "Vehicles retrieved successfully", mappedVehicles, res, 200);
 
     } catch (error) {
         console.error('Get my vehicles error:', error);
@@ -79,16 +70,35 @@ VehicleManagementController.getVehicleById = async (req, res) => {
             return Helper.response("Failed", "Missing vehicleId or userId", {}, res, 400);
         }
 
-        const vehicle = await Register.findOne({ 
+        const mongoose = require('mongoose');
+        const objectIdUserId = typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId;
+
+        const vehicle = await RegisteredVehicles.findOne({ 
             _id: vehicleId, 
-            userId: userId 
-        });
+            userId: objectIdUserId 
+        })
+        .populate('registerId', 'Name Age Address Landmark Pincode City State ContactNo')
+        .populate('rentalId', 'businessName ownerName Address Landmark Pincode City State ContactNo');
 
         if (!vehicle) {
             return Helper.response("Failed", "Vehicle not found", {}, res, 404);
         }
 
-        Helper.response("Success", "Vehicle retrieved successfully", vehicle, res, 200);
+        // Map vehicle to include owner details
+        const register = vehicle.registerId || {};
+        const rental = vehicle.rentalId || {};
+        const mappedVehicle = {
+            ...vehicle.toObject(),
+            Name: register.Name || rental.ownerName || 'N/A',
+            VehicleModel: vehicle.vehicleModel,
+            City: register.City || rental.City || 'N/A',
+            State: register.State || rental.State || 'N/A',
+            Address: register.Address || rental.Address || 'N/A',
+            ContactNo: register.ContactNo || rental.ContactNo || 'N/A',
+            Pincode: register.Pincode || rental.Pincode || 'N/A',
+        };
+
+        Helper.response("Success", "Vehicle retrieved successfully", mappedVehicle, res, 200);
 
     } catch (error) {
         console.error('Get vehicle by ID error:', error);
@@ -110,23 +120,51 @@ VehicleManagementController.updateVehicle = async (req, res) => {
         // Remove userId from updateData to avoid updating it
         delete updateData.userId;
 
-        // Validate required fields
-        const requiredFields = ['rentalPrice', 'returnDuration', 'address', 'city', 'state', 'pincode', 'contactNo'];
-        for (const field of requiredFields) {
-            if (!updateData[field]) {
-                return Helper.response("Failed", `Missing required field: ${field}`, {}, res, 400);
-            }
+        // Validate required fields - only rentalPrice is required for vehicle update
+        if (!updateData.rentalPrice) {
+            return Helper.response("Failed", "Missing required field: rentalPrice", {}, res, 400);
         }
 
         // Check if vehicle exists and belongs to user
-        const existingVehicle = await Register.findOne({ 
+        const mongoose = require('mongoose');
+        const objectIdUserId = typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId;
+        
+        const existingVehicle = await RegisteredVehicles.findOne({ 
             _id: vehicleId, 
-            userId: userId 
-        });
+            userId: objectIdUserId 
+        })
+        .populate('registerId')
+        .populate('rentalId');
 
         if (!existingVehicle) {
             return Helper.response("Failed", "Vehicle not found or unauthorized", {}, res, 404);
         }
+        
+        // If personal details need to be updated, update Register model
+        if (updateData.address || updateData.city || updateData.state || updateData.pincode || updateData.contactNo) {
+            if (existingVehicle.registerId) {
+                await Register.findByIdAndUpdate(
+                    existingVehicle.registerId,
+                    {
+                        Address: updateData.address,
+                        City: updateData.city,
+                        State: updateData.state,
+                        Pincode: updateData.pincode,
+                        ContactNo: updateData.contactNo,
+                        updatedAt: new Date()
+                    },
+                    { new: true }
+                );
+            }
+        }
+        
+        // Remove personal detail fields from vehicle update data
+        delete updateData.address;
+        delete updateData.city;
+        delete updateData.state;
+        delete updateData.pincode;
+        delete updateData.contactNo;
+        delete updateData.returnDuration; // This might be in RegisteredVehicles, check schema
 
         // Check if vehicle has active bookings
         const activeBookings = await Booking.find({
@@ -138,15 +176,16 @@ VehicleManagementController.updateVehicle = async (req, res) => {
             return Helper.response("Failed", "Cannot update vehicle with active bookings", {}, res, 400);
         }
 
-        // Update vehicle
-        const updatedVehicle = await Register.findByIdAndUpdate(
+        // Update vehicle in RegisteredVehicles
+        // Note: Personal details should be updated in Register model via registerId
+        const updatedVehicle = await RegisteredVehicles.findByIdAndUpdate(
             vehicleId,
             {
                 ...updateData,
                 updatedAt: new Date()
             },
             { new: true, runValidators: true }
-        );
+        ).populate('registerId').populate('rentalId');
 
         Helper.response("Success", "Vehicle updated successfully", updatedVehicle, res, 200);
 
@@ -167,9 +206,12 @@ VehicleManagementController.deleteVehicle = async (req, res) => {
         }
 
         // Check if vehicle exists and belongs to user
-        const existingVehicle = await Register.findOne({ 
+        const mongoose = require('mongoose');
+        const objectIdUserId = typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId;
+        
+        const existingVehicle = await RegisteredVehicles.findOne({ 
             _id: vehicleId, 
-            userId: userId 
+            userId: objectIdUserId 
         });
 
         if (!existingVehicle) {
@@ -188,8 +230,10 @@ VehicleManagementController.deleteVehicle = async (req, res) => {
 
         // Delete all related data
         await Promise.all([
-            // Delete vehicle
-            Register.findByIdAndDelete(vehicleId),
+            // Delete vehicle from RegisteredVehicles
+            RegisteredVehicles.findByIdAndDelete(vehicleId),
+            // Delete personal details from Register if registerId exists
+            existingVehicle.registerId ? Register.findByIdAndDelete(existingVehicle.registerId) : Promise.resolve(),
             // Delete all bookings for this vehicle
             Booking.deleteMany({ vehicleId: vehicleId }),
             // Delete all availability records for this vehicle
@@ -215,9 +259,12 @@ VehicleManagementController.toggleAvailability = async (req, res) => {
         }
 
         // Check if vehicle exists and belongs to user
-        const existingVehicle = await Register.findOne({ 
+        const mongoose = require('mongoose');
+        const objectIdUserId = typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId;
+        
+        const existingVehicle = await RegisteredVehicles.findOne({ 
             _id: vehicleId, 
-            userId: userId 
+            userId: objectIdUserId 
         });
 
         if (!existingVehicle) {
@@ -225,7 +272,7 @@ VehicleManagementController.toggleAvailability = async (req, res) => {
         }
 
         // Update vehicle availability
-        const updatedVehicle = await Register.findByIdAndUpdate(
+        const updatedVehicle = await RegisteredVehicles.findByIdAndUpdate(
             vehicleId,
             { 
                 isAvailable: isAvailable,
@@ -253,10 +300,15 @@ VehicleManagementController.getVehicleStats = async (req, res) => {
         }
 
         // Check if vehicle exists and belongs to user
-        const existingVehicle = await Register.findOne({ 
+        const mongoose = require('mongoose');
+        const objectIdUserId = typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId;
+        
+        const existingVehicle = await RegisteredVehicles.findOne({ 
             _id: vehicleId, 
-            userId: userId 
-        });
+            userId: objectIdUserId 
+        })
+        .populate('registerId')
+        .populate('rentalId');
 
         if (!existingVehicle) {
             return Helper.response("Failed", "Vehicle not found or unauthorized", {}, res, 404);
@@ -293,7 +345,7 @@ VehicleManagementController.getVehicleStats = async (req, res) => {
             activeBookings,
             totalEarnings,
             vehicle: {
-                model: existingVehicle.VehicleModel,
+                model: existingVehicle.vehicleModel,
                 type: existingVehicle.vehicleType,
                 category: existingVehicle.category,
                 rentalPrice: existingVehicle.rentalPrice,
@@ -312,32 +364,28 @@ VehicleManagementController.getVehicleStats = async (req, res) => {
 // Debug endpoint to see all vehicles
 VehicleManagementController.getAllVehiclesDebug = async (req, res) => {
     try {
-        const allVehicles = await Register.find({})
+        const allVehicles = await RegisteredVehicles.find({})
+            .populate('registerId', 'Name')
+            .populate('rentalId', 'ownerName')
             .sort({ createdAt: -1 })
-            .select('userId Name VehicleModel category vehicleType')
+            .select('userId vehicleModel category vehicleType registerId rentalId')
             .limit(10);
 
-        console.log('All vehicles in database:', allVehicles.map(v => ({
+        const mappedVehicles = allVehicles.map(v => ({
             id: v._id,
             userId: v.userId,
             userIdType: typeof v.userId,
-            name: v.Name,
-            model: v.VehicleModel,
+            name: v.registerId?.Name || v.rentalId?.ownerName || 'N/A',
+            model: v.vehicleModel,
             category: v.category,
             vehicleType: v.vehicleType
-        })));
+        }));
+
+        console.log('All vehicles in database:', mappedVehicles);
 
         Helper.response("Success", "Debug data retrieved", {
             totalVehicles: allVehicles.length,
-            vehicles: allVehicles.map(v => ({
-                id: v._id,
-                userId: v.userId,
-                userIdType: typeof v.userId,
-                name: v.Name,
-                model: v.VehicleModel,
-                category: v.category,
-                vehicleType: v.vehicleType
-            }))
+            vehicles: mappedVehicles
         }, res, 200);
 
     } catch (error) {
@@ -362,7 +410,7 @@ VehicleManagementController.fixNullUserIdVehicles = async (req, res) => {
             query.userId = null;
         }
 
-        const vehiclesToUpdate = await Register.find(query);
+        const vehiclesToUpdate = await RegisteredVehicles.find(query);
         console.log(`Found ${vehiclesToUpdate.length} vehicles to update`);
 
         if (vehiclesToUpdate.length === 0) {
@@ -370,11 +418,14 @@ VehicleManagementController.fixNullUserIdVehicles = async (req, res) => {
         }
 
         // Update vehicles with the provided userId
-        const updateResult = await Register.updateMany(
+        const mongoose = require('mongoose');
+        const objectIdUserId = typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId;
+        
+        const updateResult = await RegisteredVehicles.updateMany(
             query,
             { 
                 $set: { 
-                    userId: userId,
+                    userId: objectIdUserId,
                     updatedAt: new Date()
                 } 
             }
