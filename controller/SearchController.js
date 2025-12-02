@@ -38,38 +38,25 @@ SearchController.searchVehicles = async (req, res) => {
         } = req.query;
 
         const skip = (page - 1) * limit;
-        let query = {};
-
-        // Only show verified vehicles
-        query.verificationStatus = 'verified';
-
-        // City filter
-        if (city) {
-            query.City = { $regex: city, $options: 'i' };
-        }
+        
+        // Use RegisteredVehicles as primary model
+        // City filter will be applied after populating registerId/rentalId
+        let registeredVehiclesQuery = { verificationStatus: 'verified' };
 
         // Vehicle type filter with case-insensitive matching
         if (vehicleType && vehicleType !== 'all' && vehicleType !== 'All') {
-            query.vehicleType = { $regex: new RegExp(`^${vehicleType}$`, 'i') };
+            registeredVehiclesQuery.vehicleType = { $regex: new RegExp(`^${vehicleType}$`, 'i') };
         }
 
         // Price range filter
         if (minPrice || maxPrice) {
-            query.rentalPrice = {};
-            if (minPrice) query.rentalPrice.$gte = parseInt(minPrice);
-            if (maxPrice) query.rentalPrice.$lte = parseInt(maxPrice);
+            registeredVehiclesQuery.rentalPrice = {};
+            if (minPrice) registeredVehiclesQuery.rentalPrice.$gte = parseInt(minPrice);
+            if (maxPrice) registeredVehiclesQuery.rentalPrice.$lte = parseInt(maxPrice);
         }
 
-        // Location-based filter (geospatial query)
-        if (latitude && longitude) {
-            const userLat = parseFloat(latitude);
-            const userLon = parseFloat(longitude);
-            const radiusInKm = parseFloat(radius);
-
-            // Ensure latitude and longitude are not null in the database
-            query.latitude = { $ne: null };
-            query.longitude = { $ne: null };
-        }
+        // Location-based filter - will check after populate
+        // Note: latitude/longitude might be in registerId or rentalId
 
         // Get available vehicles
         let availableVehicles = [];
@@ -102,6 +89,13 @@ SearchController.searchVehicles = async (req, res) => {
             for (const rental of allRentals) {
                 const register = rental.registerId || {};
                 const rentalInfo = rental.rentalId || {};
+                
+                // Apply city filter if specified
+                if (city) {
+                    const cityMatch = (register.City && new RegExp(city, 'i').test(register.City)) ||
+                                     (rentalInfo.City && new RegExp(city, 'i').test(rentalInfo.City));
+                    if (!cityMatch) continue;
+                }
                 
                 // Add main vehicle
                 if (rental.vehicleModel && rental.vehicleType) {
@@ -369,30 +363,28 @@ SearchController.getVehicleDetails = async (req, res) => {
         // Get popular cities
 SearchController.getPopularCities = async (req, res) => {
     try {
-        const cities = await Register.aggregate([
-            {
-                $match: { verificationStatus: 'verified' } // Only count verified vehicles
-            },
-            {
-                $group: {
-                    _id: '$City',
-                    vehicleCount: { $sum: 1 }
-                }
-            },
-            {
-                $sort: { vehicleCount: -1 }
-            },
-            {
-                $limit: 10
-            },
-            {
-                $project: {
-                    city: '$_id',
-                    vehicleCount: 1,
-                    _id: 0
-                }
+        // Use RegisteredVehicles as primary model and lookup City from Register via registerId
+        // First, get all verified vehicles with populated registerId and rentalId
+        const vehicles = await RegisteredVehicles.find({ verificationStatus: 'verified' })
+            .populate('registerId', 'City')
+            .populate('rentalId', 'City')
+            .select('registerId rentalId')
+            .lean();
+
+        // Extract cities from registerId or rentalId
+        const cityCounts = {};
+        for (const vehicle of vehicles) {
+            const city = vehicle.registerId?.City || vehicle.rentalId?.City;
+            if (city) {
+                cityCounts[city] = (cityCounts[city] || 0) + 1;
             }
-        ]);
+        }
+
+        // Convert to array and sort
+        const cities = Object.entries(cityCounts)
+            .map(([city, vehicleCount]) => ({ city, vehicleCount }))
+            .sort((a, b) => b.vehicleCount - a.vehicleCount)
+            .slice(0, 10);
 
         Helper.response("Success", "Popular cities retrieved successfully", { cities }, res, 200);
 
@@ -405,7 +397,8 @@ SearchController.getPopularCities = async (req, res) => {
 // Get vehicle types
 SearchController.getVehicleTypes = async (req, res) => {
     try {
-        const vehicleTypes = await Register.aggregate([
+        // Use RegisteredVehicles as primary model
+        const vehicleTypes = await RegisteredVehicles.aggregate([
             {
                 $match: { verificationStatus: 'verified' } // Only count verified vehicles
             },
@@ -452,77 +445,14 @@ SearchController.getVehiclesByCategory = async (req, res) => {
         } = req.query;
 
         const skip = (page - 1) * limit;
-        let query = {};
 
-        // Only show verified vehicles
-        query.verificationStatus = 'verified';
+        // Use RegisteredVehicles as primary model for vehicle listings
+        const registeredVehiclesQuery = { verificationStatus: 'verified' };
 
         // Category filter (2-wheeler or 4-wheeler)
         if (category && category !== 'all' && category !== 'All') {
             const categoryLower = category.toLowerCase();
 
-            if (categoryLower === '2-wheeler' || categoryLower === '2wheeler') {
-                query.$or = [
-                    { category: { $in: ['2-wheeler', '2-Wheeler'] } },
-                    { vehicleType: { $in: ['bike', 'Bike', 'scooty', 'Scooty', 'scooter', 'Scooter'] } }
-                ];
-            } else if (categoryLower === '4-wheeler' || categoryLower === '4wheeler') {
-                query.$or = [
-                    { category: { $in: ['4-wheeler', '4-Wheeler'] } },
-                    { vehicleType: { $in: ['car', 'Car', 'sedan', 'Sedan', 'SUV', 'suv', 'hatchback', 'Hatchback'] } }
-                ];
-            } else if (categoryLower === 'bike') {
-                query.$or = [
-                    { category: { $in: ['2-wheeler', '2-Wheeler'] } },
-                    { vehicleType: { $in: ['bike', 'Bike', 'scooty', 'Scooty', 'scooter', 'Scooter'] } }
-                ];
-                query.subcategory = { $in: ['bike', 'Bike', 'BIKE'] };
-            } else if (categoryLower === 'scooty') {
-                query.$or = [
-                    { category: { $in: ['2-wheeler', '2-Wheeler'] } },
-                    { vehicleType: { $in: ['bike', 'Bike', 'scooty', 'Scooty', 'scooter', 'Scooter'] } }
-                ];
-                query.subcategory = { $in: ['scooty', 'Scooty', 'scooter', 'Scooter'] };
-            } else if (categoryLower === 'car') {
-                query.$or = [
-                    { category: { $in: ['4-wheeler', '4-Wheeler'] } },
-                    { vehicleType: { $in: ['car', 'Car', 'sedan', 'Sedan', 'SUV', 'suv', 'hatchback', 'Hatchback'] } }
-                ];
-            } else {
-                // Direct match for specific vehicle types
-                query.vehicleType = { $regex: new RegExp(`^${category}$`, 'i') };
-            }
-        }
-
-        // Subcategory filter
-        if (subcategory && subcategory !== 'all' && subcategory !== 'All') {
-            query.subcategory = { $regex: new RegExp(`^${subcategory}$`, 'i') };
-        }
-
-        // City filter
-        if (city) {
-            query.City = { $regex: city, $options: 'i' };
-        }
-
-        // Price range filter
-        if (minPrice || maxPrice) {
-            query.rentalPrice = {};
-            if (minPrice) query.rentalPrice.$gte = parseInt(minPrice);
-            if (maxPrice) query.rentalPrice.$lte = parseInt(maxPrice);
-        }
-
-        // Location-based filter
-        if (latitude && longitude) {
-            query.latitude = { $ne: null };
-            query.longitude = { $ne: null };
-        }
-
-        // Use RegisteredVehicles as primary model for vehicle listings
-        const registeredVehiclesQuery = { verificationStatus: 'verified' };
-        
-        // Apply category filter to registered vehicles
-        if (category && category !== 'all' && category !== 'All') {
-            const categoryLower = category.toLowerCase();
             if (categoryLower === '2-wheeler' || categoryLower === '2wheeler') {
                 registeredVehiclesQuery.$or = [
                     { category: { $in: ['2-wheeler', '2-Wheeler'] } }
@@ -531,20 +461,43 @@ SearchController.getVehiclesByCategory = async (req, res) => {
                 registeredVehiclesQuery.$or = [
                     { category: { $in: ['4-wheeler', '4-Wheeler'] } }
                 ];
+            } else if (categoryLower === 'bike') {
+                registeredVehiclesQuery.$or = [
+                    { category: { $in: ['2-wheeler', '2-Wheeler'] } }
+                ];
+                registeredVehiclesQuery.subcategory = { $in: ['bike', 'Bike', 'BIKE'] };
+            } else if (categoryLower === 'scooty') {
+                registeredVehiclesQuery.$or = [
+                    { category: { $in: ['2-wheeler', '2-Wheeler'] } }
+                ];
+                registeredVehiclesQuery.subcategory = { $in: ['scooty', 'Scooty', 'scooter', 'Scooter'] };
+            } else if (categoryLower === 'car') {
+                registeredVehiclesQuery.$or = [
+                    { category: { $in: ['4-wheeler', '4-Wheeler'] } }
+                ];
+            } else {
+                // Direct match for specific vehicle types
+                registeredVehiclesQuery.vehicleType = { $regex: new RegExp(`^${category}$`, 'i') };
             }
         }
-        
-        // Apply subcategory filter
+
+        // Subcategory filter
         if (subcategory && subcategory !== 'all' && subcategory !== 'All') {
             registeredVehiclesQuery.subcategory = { $regex: new RegExp(`^${subcategory}$`, 'i') };
         }
-        
+
+        // City filter - will be applied after populating registerId/rentalId
+        // Note: City is in Register or RegisterRental, not in RegisteredVehicles directly
+
         // Price range filter
         if (minPrice || maxPrice) {
             registeredVehiclesQuery.rentalPrice = {};
             if (minPrice) registeredVehiclesQuery.rentalPrice.$gte = parseInt(minPrice);
             if (maxPrice) registeredVehiclesQuery.rentalPrice.$lte = parseInt(maxPrice);
         }
+
+        // Location-based filter - will check after populate
+        // Note: latitude/longitude might be in registerId or rentalId
 
         // Get verified vehicles from RegisteredVehicles model with personal details from Register
         const allRegisteredVehicles = await RegisteredVehicles.find(registeredVehiclesQuery)
@@ -707,7 +660,8 @@ SearchController.getVehiclesByCategory = async (req, res) => {
 // Get vehicle categories with counts
 SearchController.getVehicleCategories = async (req, res) => {
     try {
-        const categories = await Register.aggregate([
+        // Use RegisteredVehicles as primary model
+        const categories = await RegisteredVehicles.aggregate([
             {
                 $match: { verificationStatus: 'verified' } // Only count verified vehicles
             },
@@ -931,12 +885,12 @@ SearchController.checkAvailability = async (req, res) => {
             availabilityIssues: availabilityIssues,
             vehicle: {
                 _id: vehicle._id,
-                VehicleModel: vehicle.VehicleModel,
+                VehicleModel: vehicle.vehicleModel || vehicle.VehicleModel,
                 vehicleType: vehicle.vehicleType,
                 rentalPrice: vehicle.rentalPrice,
                 hourlyPrice: vehicle.hourlyPrice,
-                City: vehicle.City,
-                State: vehicle.State
+                City: vehicle.City || (vehicle.registerId?.City) || (vehicle.rentalId?.City) || 'N/A',
+                State: vehicle.State || (vehicle.registerId?.State) || (vehicle.rentalId?.State) || 'N/A'
             }
         }, res, 200);
 
@@ -957,25 +911,52 @@ SearchController.getRentals=async (req, res) => {
         const userLon = parseFloat(longitude);
         const radiusInKm = parseFloat(radius);
         
-        // Find all verified rentals with valid coordinates
-        const rentals = await Rentals.find({
+        // Find all verified vehicles from RegisteredVehicles with rentalId (rental businesses)
+        // Populate registerId and rentalId for location data
+        const rentals = await RegisteredVehicles.find({
             verificationStatus: 'verified',
-            latitude: { $ne: null },
-            longitude: { $ne: null }
-        }).select('Name VehicleModel vehicleType rentalPrice City State VehiclePhoto ContactNo Address latitude longitude');
+            rentalId: { $ne: null } // Only vehicles linked to rental businesses
+        })
+        .populate('registerId', 'Name City State Address ContactNo latitude longitude')
+        .populate('rentalId', 'City State Address ContactNo latitude longitude')
+        .select('vehicleModel vehicleType rentalPrice vehiclePhoto licensePlate');
         
-        // const rentals = await Rentals.find();
         // Calculate distance and filter by radius
-        const nearbyRentals = rentals.map(rental => {
-            const distance = calculateDistance(userLat, userLon, rental.latitude, rental.longitude);
-            console.log("ssss",distance)
-            return {
-                ...rental.toObject(),
+        const nearbyRentals = [];
+        for (const rental of rentals) {
+            const register = rental.registerId || {};
+            const rentalInfo = rental.rentalId || {};
+            
+            // Get location from registerId or rentalId
+            const vehicleLat = register.latitude || rentalInfo.latitude;
+            const vehicleLon = register.longitude || rentalInfo.longitude;
+            
+            if (!vehicleLat || !vehicleLon) continue;
+            
+            const distance = calculateDistance(userLat, userLon, vehicleLat, vehicleLon);
+            
+            if (distance <= radiusInKm) {
+                nearbyRentals.push({
+                    _id: rental._id,
+                    Name: register.Name || rentalInfo.ownerName || 'N/A',
+                    VehicleModel: rental.vehicleModel,
+                    vehicleType: rental.vehicleType,
+                    rentalPrice: rental.rentalPrice,
+                    City: register.City || rentalInfo.City || 'N/A',
+                    State: register.State || rentalInfo.State || 'N/A',
+                    VehiclePhoto: rental.vehiclePhoto,
+                    ContactNo: register.ContactNo || rentalInfo.ContactNo || 'N/A',
+                    Address: register.Address || rentalInfo.Address || 'N/A',
+                    latitude: vehicleLat,
+                    longitude: vehicleLon,
                 distance: parseFloat(distance.toFixed(2))
-            };
+                });
+            }
         }
-        ).filter(rental => rental.distance <= radiusInKm
-        ).sort((a, b) => a.distance - b.distance);
+        
+        // Sort by distance
+        nearbyRentals.sort((a, b) => a.distance - b.distance);
+        
          Helper.response("Success", "Nearby rentals retrieved successfully", { rentals: nearbyRentals }, res, 200);
     }
         catch (error) {
