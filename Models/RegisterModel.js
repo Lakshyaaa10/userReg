@@ -42,26 +42,10 @@ const RegisterSchema = new mongoose.Schema({
         type: String, // Stores the URL or path to the uploaded address proof
         required: false
     },
-    VehicleRC: {
-        type: String, // Stores the URL or path to the uploaded vehicle RC
-        required: false
-    },
+   
     PollutionCertificate: {
         type: String, // Stores the URL or path to the uploaded pollution certificate
         required: false
-    },
-    VehicleModel: {
-        type: String,
-        required: true
-    },
-    ReturnDuration: {
-        type: String, // Could be a date string, or a specific duration format
-        required: true
-    },
-    rentalPrice: {
-        type: Number,
-        required: true,
-        min: 0 // Ensure price is not negative
     },
     hourlyPrice: {
         type: Number,
@@ -146,6 +130,25 @@ const RegisterSchema = new mongoose.Schema({
     isAvailable: {
         type: Boolean,
         default: true
+    },
+    // Document verification status
+    verificationStatus: {
+        type: String,
+        enum: ['pending', 'verified', 'rejected'],
+        default: 'pending'
+    },
+    verifiedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Admin',
+        default: null
+    },
+    verifiedAt: {
+        type: Date,
+        default: null
+    },
+    rejectionReason: {
+        type: String,
+        default: ''
     }
 });
 
@@ -155,6 +158,6 @@ RegisterSchema.pre('save', function (next) {
     next();
 });
 
-const Register = mongoose.model('Register', RegisterSchema);
+const Register = mongoose.models.Register || mongoose.model('Register', RegisterSchema);
 
 module.exports = Register;

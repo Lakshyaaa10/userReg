@@ -86,6 +86,6 @@ earningsSchema.index({ ownerId: 1, createdAt: -1 });
 earningsSchema.index({ vehicleId: 1, createdAt: -1 });
 earningsSchema.index({ paymentStatus: 1 });
 
-const Earnings = mongoose.model('Earnings', earningsSchema);
+const Earnings = mongoose.models.Earnings || mongoose.model('Earnings', earningsSchema);
 
 module.exports = Earnings;

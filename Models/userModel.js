@@ -72,5 +72,5 @@ const Users = new mongoose.Schema({
         default: 'renter'
     }
 })
-const userModel= mongoose.model("users",Users)
+const userModel= mongoose.models.users || mongoose.model("users",Users)
 module.exports = userModel

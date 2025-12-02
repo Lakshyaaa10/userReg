@@ -1,0 +1,103 @@
+{
+  "info": {
+    "name": "Admin Register API",
+    "description": "JSON examples for Admin Registration API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Admin Register - Basic (Required Fields Only)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"admin1\",\n  \"email\": \"admin1@zugo.com\",\n  \"password\": \"admin123\",\n  \"fullName\": \"Admin User One\",\n  \"phone\": \"9876543210\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/admin/register",
+          "host": ["{{base_url}}"],
+          "path": ["admin", "register"]
+        }
+      }
+    },
+    {
+      "name": "Admin Register - Complete (All Fields)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"superadmin\",\n  \"email\": \"superadmin@zugo.com\",\n  \"password\": \"SuperAdmin@123\",\n  \"fullName\": \"Super Admin User\",\n  \"phone\": \"9876543211\",\n  \"role\": \"super_admin\",\n  \"permissions\": [\n    \"manage_users\",\n    \"manage_vehicles\",\n    \"manage_bookings\",\n    \"manage_payments\",\n    \"manage_notifications\",\n    \"rto_assistance\",\n    \"view_analytics\"\n  ],\n  \"rtoSpecialization\": [\n    \"registration\",\n    \"license\",\n    \"permit\"\n  ],\n  \"assignedRegions\": [\n    \"Mumbai\",\n    \"Delhi\",\n    \"Bangalore\"\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/admin/register",
+          "host": ["{{base_url}}"],
+          "path": ["admin", "register"]
+        }
+      }
+    },
+    {
+      "name": "Admin Register - Moderator Role",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"moderator1\",\n  \"email\": \"moderator1@zugo.com\",\n  \"password\": \"moderator123\",\n  \"fullName\": \"Moderator User\",\n  \"phone\": \"9876543212\",\n  \"role\": \"moderator\",\n  \"permissions\": [\n    \"manage_users\",\n    \"manage_vehicles\",\n    \"view_analytics\"\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/admin/register",
+          "host": ["{{base_url}}"],
+          "path": ["admin", "register"]
+        }
+      }
+    },
+    {
+      "name": "Admin Register - Support Role",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"support1\",\n  \"email\": \"support1@zugo.com\",\n  \"password\": \"support123\",\n  \"fullName\": \"Support Staff\",\n  \"phone\": \"9876543213\",\n  \"role\": \"support\",\n  \"permissions\": [\n    \"manage_notifications\",\n    \"rto_assistance\"\n  ],\n  \"rtoSpecialization\": [\n    \"registration\",\n    \"license\"\n  ],\n  \"assignedRegions\": [\n    \"Mumbai\"\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/admin/register",
+          "host": ["{{base_url}}"],
+          "path": ["admin", "register"]
+        }
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://zugo-backend.onrender.com",
+      "type": "string"
+    }
+  ]
+}
+
+
+

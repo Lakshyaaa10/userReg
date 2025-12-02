@@ -1,8 +1,10 @@
+const mongoose = require('mongoose');
 const Helper = require("../Helper/Helper");
 const Register = require("../Models/RegisterModel");
-const registerRental = require("../Models/registerRentalModel");
-
+const registerRental = require("../Models/RegisterRentalModel");
+const RegisteredVehicles = require("../Models/RegisteredVehicles");
 const RegisterController = {};
+const Users = require("../Models/userModel");
 
 RegisterController.registerVehicle = async (req, res) => {
   try {
@@ -34,7 +36,7 @@ RegisterController.registerVehicle = async (req, res) => {
     const vehicleRC =
       req?.files?.vehicleRC === undefined ? "" : req?.files?.vehicleRC;
     const PUC = req?.files?.PUC === undefined ? "" : req?.files?.PUC;
-
+    console.log(vehiclePhoto);
     if (
       !name ||
       !age ||
@@ -63,28 +65,18 @@ RegisterController.registerVehicle = async (req, res) => {
       Helper.response("Failed", "Please Provide Vehicle Photo", {}, res, 200);
       return;
     }
-    if (
-      addressPhoto == undefined ||
-      addressPhoto == null ||
-      addressPhoto == ""
-    ) {
-      Helper.response("Failed", "Please Provide Vehicle Photo", {}, res, 200);
-      return;
-    }
+    
     if (vehicleRC == undefined || vehicleRC == null || vehicleRC == "") {
-      Helper.response("Failed", "Please Provide Vehicle Photo", {}, res, 200);
-      return;
+      Helper.response("Failed", "Please Provide Vehicle RC Photo", {}, res, 200);
+      return; 
     }
-    if (PUC == undefined || PUC == null || PUC == "") {
-      Helper.response("Failed", "Please Provide Vehicle Photo", {}, res, 200);
-      return;
-    }
+    
     var attachment1 = "";
     var attachment2 = "";
     var attachment3 = "";
     var attachment4 = "";
     if (vehiclePhoto) {
-      const upload =await Helper.uploadVehicle(vehiclePhoto);
+      const upload = await Helper.uploadVehicle(vehiclePhoto);
       var attachment1 = upload;
     }
     if (addressPhoto) {
@@ -92,7 +84,7 @@ RegisterController.registerVehicle = async (req, res) => {
       var attachment2 = upload;
     }
     if (vehicleRC) {
-      const upload =await Helper.uploadVehicle(vehicleRC);
+      const upload = await Helper.uploadVehicle(vehicleRC);
       var attachment3 = upload;
     }
     if (PUC) {
@@ -102,7 +94,7 @@ RegisterController.registerVehicle = async (req, res) => {
     // Auto-determine category and subcategory based on vehicleType
     let autoCategory = '2-wheeler';
     let autoSubcategory = 'Bike';
-    
+
     const vehicleTypeLower = vehicleType.toLowerCase();
     if (vehicleTypeLower === 'bike') {
       autoCategory = '2-wheeler';
@@ -124,6 +116,7 @@ RegisterController.registerVehicle = async (req, res) => {
       autoSubcategory = subcategory || 'Sedan';
     }
 
+    // Create Register entry for personal details
     const newRegister = new Register({
       Name: name,
       Age: age,
@@ -133,107 +126,165 @@ RegisterController.registerVehicle = async (req, res) => {
       City: city,
       State: state,
       ContactNo: contact,
-      VehiclePhoto: attachment1,
       AddressProof: attachment2,
-      VehicleRC: attachment3,
       PollutionCertificate: attachment4,
-      VehicleModel: vehicleModel,
-      ReturnDuration: returnDuration,
-      rentalPrice: parseFloat(rentalPrice),
-      hourlyPrice: hourlyPrice ? parseFloat(hourlyPrice) : null,
-      AgreedToTerms: agreed==1?true:false,
-      vehicleType: vehicleType,
-      category: category || autoCategory,
-      subcategory: subcategory || autoSubcategory,
       latitude: parseFloat(latitude),
       longitude: parseFloat(longitude),
       userId: userId,
+      AgreedToTerms: agreed == 1 ? true : false,
     });
-    if (newRegister) {
-      await newRegister.save();
-      Helper.response("Success", "Registered Successfully",{},res,200);
-      return;
-    } else {
-      Helper.response("Failed", "Unable to Register", {}, res, 200);
-      return;
-    }
+
+    await newRegister.save();
+
+    // Create RegisteredVehicles entry for vehicle details
+    const userIdObjectId = userId ? 
+      (typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId) 
+      : userId;
+
+    // Generate a unique license plate if not provided (using timestamp + random)
+    const licensePlate = `REG-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
+
+    const newVehicle = new RegisteredVehicles({
+      userId: userIdObjectId,
+      registerId: newRegister._id, // Link to Register entry for personal details
+      vehicleType: vehicleType,
+      vehicleModel: vehicleModel,
+      licensePlate: licensePlate,
+      registrationDocument: attachment2, // Address proof
+      vehicleRC: attachment3,
+      vehiclePhoto: attachment1,
+      rentalPrice: parseFloat(rentalPrice),
+      hourlyPrice: hourlyPrice ? parseFloat(hourlyPrice) : null,
+      category: category || autoCategory,
+      subcategory: subcategory || autoSubcategory,
+      verificationStatus: 'pending', // Set to pending for admin verification
+      isAvailable: true,
+      rentalPrice: parseFloat(rentalPrice),
+      ReturnDuration: returnDuration
+    });
+
+    await newVehicle.save();
+
+    // Link vehicle to register entry by storing registerId in vehicle (we'll add this field if needed)
+    // For now, we can use userId to link them
+
+    Helper.response("Success", "Vehicle registered successfully. Your documents are pending admin verification.", {
+      registerId: newRegister._id,
+      vehicleId: newVehicle._id
+    }, res, 200);
+    return;
 
   } catch (error) {
     console.log(error)
-     Helper.response("Falied", "Internal Server Error", error, res, 200);
+    Helper.response("Falied", "Internal Server Error", error, res, 200);
   }
 };
 RegisterController.registerRental = async (req, res) => {
   try {
     // Accept both camelCase and capitalized keys from clients
+   
     const body = req.body || {};
     const businessName = body.businessName || body.BusinessName;
     const ownerName = body.ownerName || body.OwnerName;
-    const nameForRegister = body.name || body.Name || ownerName || '';
-    const ageForRegister = body.age || body.Age;
-    const returnDurationForRegister = body.returnDuration || body.ReturnDuration || '5 days';
     const address = body.address || body.Address;
     const landmark = body.landmark || body.Landmark || "";
     const pincode = body.pincode || body.Pincode;
     const city = body.city || body.City;
     const state = body.state || body.State;
     const contact = body.contact || body.ContactNo || body.Contact || body.contactNo;
+    const agreed = (body.agreed !== undefined ? body.agreed : body.AgreedToTerms);
+    const latitude = body.latitude || body.Latitude;
+    const longitude = body.longitude || body.Longitude;
+
+    // Vehicle fields for RegisteredVehicles model
+    // const userId = body.userId || body.UserId;
+    const vehicleType = body.vehicleType || body.VehicleType;
+    const vehicleMake = body.vehicleMake || body.VehicleMake;
     const vehicleModel = body.vehicleModel || body.VehicleModel;
+    const vehicleYear = body.vehicleYear || body.VehicleYear;
+    const licensePlate = body.licensePlate || body.LicensePlate;
     const rentalPrice = body.rentalPrice;
     const hourlyPrice = body.hourlyPrice;
     const gearsProvided = body.gearsProvided || body.GearsProvided || "";
-    const agreed = (body.agreed !== undefined ? body.agreed : body.AgreedToTerms);
-    const vehicleType = body.vehicleType || body.VehicleType;
     const category = body.category || body.Category;
     const subcategory = body.subcategory || body.Subcategory;
-    const latitude = body.latitude || body.Latitude;
-    const longitude = body.longitude || body.Longitude;
     const additionalVehicles = body.additionalVehicles;
+    const insuranceDocument = body.insuranceDocument || body.InsuranceDocument;
 
     // Correct file fields expected from client
     const vehiclePhoto = req?.files?.vehiclePhoto === undefined ? "" : req?.files?.vehiclePhoto;
     const vehicleRegistration = req?.files?.vehicleRegistration === undefined ? "" : req?.files?.vehicleRegistration;
     const licencePhoto = req?.files?.licencePhoto === undefined ? "" : req?.files?.licencePhoto;
-    
+    const vehicleRC = req?.files?.vehicleRC === undefined ? "" : req?.files?.vehicleRC;
 
+
+    // Validation for RegisterRental model fields
     if (
       !businessName ||
       !ownerName ||
       !address ||
-      !landmark ||
       !pincode ||
       !city ||
       !state ||
       !contact ||
-      !vehicleModel ||
-      !rentalPrice ||
-      !agreed ||
-      // gearsProvided is optional per model, do not require
-      !vehicleType ||
-      !latitude ||
-      !longitude
+      !agreed
     ) {
-      Helper.response("Failed", "Please Provide all details", {}, res, 200);
+      Helper.response("Failed", "Please Provide all rental business details (businessName, ownerName, address, pincode, city, state, contact, agreed)", {}, res, 200);
       return;
     }
+    const userId = (await Users.findOne({
+      token: req.headers.authorization.split(" ")[1]
+    }).select('_id'))?._id.toString();
+
+
+    // Validation for RegisteredVehicles model required fields
     if (
-      vehiclePhoto == undefined ||
-      vehiclePhoto == null ||
-      vehiclePhoto == ""
+      !userId ||
+      !vehicleType ||
+     
+      !vehicleModel ||
+    
+      !licensePlate ||
+      !rentalPrice ||
+      !category ||
+      !subcategory
     ) {
-      Helper.response("Failed", "Please Provide Vehicle Photo", {}, res, 200);
+      console.log("Missing vehicle details:", {
+        userId,
+        vehicleType,
+        vehicleMake,
+        vehicleModel,
+        vehicleYear,
+        licensePlate,
+        rentalPrice,
+        category,
+        subcategory
+      });
+      Helper.response("Failed", "Please Provide all vehicle details (userId, vehicleType, vehicleMake, vehicleModel, vehicleYear, licensePlate, rentalPrice, category, subcategory)", {}, res, 200);
       return;
     }
+
+    // Validate category and subcategory
+    const validCategories = ['2-wheeler', '4-wheeler', '2-Wheeler', '4-Wheeler'];
+    const validSubcategories = ['Bike', 'Scooty', 'Scooter', 'Car', 'Sedan', 'SUV', 'Hatchback', 'bike', 'scooty', 'scooter', 'car', 'sedan', 'suv', 'hatchback'];
+
+    if (!validCategories.includes(category)) {
+      Helper.response("Failed", "Invalid category. Must be one of: 2-wheeler, 4-wheeler, 2-Wheeler, 4-Wheeler", {}, res, 200);
+      return;
+    }
+
+    if (!validSubcategories.includes(subcategory)) {
+      Helper.response("Failed", "Invalid subcategory", {}, res, 200);
+      return;
+    }
+
+    // File validations - vehicleRegistration is required for RegisteredVehicles model
     if (
       vehicleRegistration == undefined ||
       vehicleRegistration == null ||
       vehicleRegistration == ""
     ) {
-      Helper.response("Failed", "Please Provide vehicleRegistration", {}, res, 200);
-      return;
-    }
-    if (licencePhoto == undefined || licencePhoto == null || licencePhoto == "") {
-      Helper.response("Failed", "Please Provide Licence Photo", {}, res, 200);
+      Helper.response("Failed", "Please Provide vehicleRegistration document", {}, res, 200);
       return;
     }
 
@@ -241,8 +292,10 @@ RegisterController.registerRental = async (req, res) => {
     let parsedAdditionalVehicles = [];
     if (additionalVehicles) {
       try {
-        parsedAdditionalVehicles = JSON.parse(additionalVehicles);
-        
+        parsedAdditionalVehicles = typeof additionalVehicles === 'string'
+          ? JSON.parse(additionalVehicles)
+          : additionalVehicles;
+
         // Validate each additional vehicle
         for (let i = 0; i < parsedAdditionalVehicles.length; i++) {
           const vehicle = parsedAdditionalVehicles[i];
@@ -250,21 +303,18 @@ RegisterController.registerRental = async (req, res) => {
             Helper.response("Failed", `Please provide all details for additional vehicle ${i + 1}`, {}, res, 200);
             return;
           }
-          
+
           // Validate category and subcategory
-          const validCategories = ['2-wheeler', '4-wheeler', '2-Wheeler', '4-Wheeler'];
-          const validSubcategories = ['Bike', 'Scooty', 'Scooter', 'Car', 'Sedan', 'SUV', 'Hatchback', 'bike', 'scooty', 'scooter', 'car', 'sedan', 'suv', 'hatchback'];
-          
           if (!validCategories.includes(vehicle.category)) {
             Helper.response("Failed", `Invalid category for additional vehicle ${i + 1}`, {}, res, 200);
             return;
           }
-          
+
           if (!validSubcategories.includes(vehicle.subcategory)) {
             Helper.response("Failed", `Invalid subcategory for additional vehicle ${i + 1}`, {}, res, 200);
             return;
           }
-          
+
           // Ensure rental price is a number
           if (isNaN(parseFloat(vehicle.rentalPrice)) || parseFloat(vehicle.rentalPrice) < 0) {
             Helper.response("Failed", `Invalid rental price for additional vehicle ${i + 1}`, {}, res, 200);
@@ -276,47 +326,73 @@ RegisterController.registerRental = async (req, res) => {
         return;
       }
     }
+
+    // Upload files
     var attachment1 = "";
     var attachment2 = "";
     var attachment3 = "";
+    var attachment4 = "";
+
     if (vehiclePhoto) {
-      const upload =await Helper.uploadVehicle(vehiclePhoto);
-      var attachment1 = upload;
+      const upload = await Helper.uploadVehicle(vehiclePhoto);
+      attachment1 = upload;
     }
     if (vehicleRegistration) {
       const upload = await Helper.uploadVehicle(vehicleRegistration);
-      var attachment2 = upload;
+      attachment2 = upload;
     }
     if (licencePhoto) {
-      const upload =await Helper.uploadVehicle(licencePhoto);
-      var attachment3 = upload;
+      const upload = await Helper.uploadVehicle(licencePhoto);
+      attachment3 = upload;
     }
+    if (vehicleRC) {
+      const upload = await Helper.uploadVehicle(vehicleRC);
+      attachment4 = upload;
+    }
+
+    // Create RegisterRental entry
     const newRegister = new registerRental({
-      // Fields required by shared Register model
-      Name: nameForRegister,
-      Age: ageForRegister ? parseInt(ageForRegister) : 0,
-      ReturnDuration: returnDurationForRegister,
       businessName: businessName,
       ownerName: ownerName,
       Address: address,
-      Landmark: landmark,
+      Landmark: landmark || "",
       Pincode: pincode,
       City: city,
       State: state,
       ContactNo: contact,
-      VehiclePhoto: attachment1,
-      vehicleRegistration: attachment2,
-      licencePhoto: attachment3,
-      VehicleModel: vehicleModel,
-      rentalPrice: rentalPrice,
-      hourlyPrice: hourlyPrice ? parseFloat(hourlyPrice) : null,
-      gearsProvided: gearsProvided || "",
-      AgreedToTerms: (agreed===true || agreed===1 || agreed==='1') ? true : false,
+      AgreedToTerms: (agreed === true || agreed === 1 || agreed === '1') ? true : false,
+      latitude: latitude ? parseFloat(latitude) : null,
+      longitude: longitude ? parseFloat(longitude) : null
+    });
+
+    await newRegister.save();
+
+    // Create RegisteredVehicles entry
+    // Convert userId to ObjectId if it's a valid string
+    const userIdObjectId = mongoose.Types.ObjectId.isValid(userId)
+      ? new mongoose.Types.ObjectId(userId)
+      : userId;
+
+    const vehicleEntry = new RegisteredVehicles({
+      rentalId: newRegister._id,
+      userId: userIdObjectId,
       vehicleType: vehicleType,
-      category: category || (vehicleType?.toLowerCase().includes('car') || vehicleType?.toLowerCase().includes('sedan') || vehicleType?.toLowerCase().includes('suv') || vehicleType?.toLowerCase().includes('hatchback') ? '4-wheeler' : '2-wheeler'),
-      subcategory: subcategory || (vehicleType?.toLowerCase() === 'bike' ? 'Bike' : vehicleType?.toLowerCase() === 'scooty' ? 'Scooty' : vehicleType),
-      latitude: parseFloat(latitude),
-      longitude: parseFloat(longitude),
+      vehicleMake: vehicleMake,
+      vehicleModel: vehicleModel,
+      vehicleYear: parseInt(vehicleYear),
+      licensePlate: licensePlate,
+      registrationDocument: attachment2, // vehicleRegistration file
+      vehicleRC: attachment4 || null,
+      insuranceDocument: insuranceDocument || null,
+      vehiclePhoto: attachment1 || null,
+      licencePhoto: attachment3 || null,
+      vehicleRegistration: attachment2 || null,
+      gearsProvided: gearsProvided || "",
+      rentalPrice: parseFloat(rentalPrice),
+      hourlyPrice: hourlyPrice ? parseFloat(hourlyPrice) : null,
+      category: category,
+      subcategory: subcategory,
+      verificationStatus: 'pending', // Set to pending for admin verification
       additionalVehicles: parsedAdditionalVehicles.map(vehicle => ({
         category: vehicle.category,
         subcategory: vehicle.subcategory,
@@ -326,20 +402,16 @@ RegisterController.registerRental = async (req, res) => {
         addedAt: new Date()
       }))
     });
-    if (newRegister) {
-      await newRegister.save();
-      Helper.response("Success", "Rental Registered Successfully",{},res,200);
-      return;
-    } else {
-      Helper.response("Failed", "Unable to Register", {}, res, 200);
-      return;
-    }
+
+    await vehicleEntry.save();
+    Helper.response("Success", "Rental registered successfully. Your documents are pending admin verification.", {}, res, 200);
+    return;
 
   } catch (error) {
-    console.log(error)
-     Helper.response("Falied", "Internal Server Error", error, res, 200);
+    console.log(error);
+    Helper.response("Failed", "Internal Server Error", error, res, 200);
   }
 };
 
- 
-module.exports= RegisterController;
+
+module.exports = RegisterController;

@@ -19,7 +19,7 @@ const notificationSchema = new mongoose.Schema({
     },
     type: {
         type: String,
-        enum: ['booking_request', 'booking_accepted', 'booking_rejected', 'payment_success', 'payment_failed', 'rto_assistance', 'general'],
+        enum: ['booking_request', 'booking_accepted', 'booking_rejected', 'payment_success', 'payment_failed', 'rto_assistance', 'vehicle_verification', 'general'],
         required: true
     },
     
@@ -80,6 +80,6 @@ notificationSchema.index({ userId: 1, isRead: 1 });
 notificationSchema.index({ userId: 1, createdAt: -1 });
 notificationSchema.index({ type: 1 });
 
-const Notification = mongoose.model('Notification', notificationSchema);
+const Notification = mongoose.models.Notification || mongoose.model('Notification', notificationSchema);
 
 module.exports = Notification;
