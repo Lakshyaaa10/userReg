@@ -99,6 +99,6 @@ driverLicenseSchema.index({ userId: 1 });
 driverLicenseSchema.index({ verificationStatus: 1 });
 driverLicenseSchema.index({ licenseNumber: 1 });
 
-const DriverLicense = mongoose.model('DriverLicense', driverLicenseSchema);
+const DriverLicense = mongoose.models.DriverLicense || mongoose.model('DriverLicense', driverLicenseSchema);
 
 module.exports = DriverLicense;

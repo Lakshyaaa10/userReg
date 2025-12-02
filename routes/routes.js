@@ -47,6 +47,7 @@ routes.use('/search', SearchRouter)
 routes.use('/veh', VehicleManagementRouter)
 
 routes.use("*", (req, res, next) => {
+  console.log(`Unhandled route: ${req.originalUrl}`);
     res.send("Not Found");
   });
 

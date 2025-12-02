@@ -42,4 +42,8 @@ searchRouter.post('/check-availability', (req, res, next) => {
     SearchController.checkAvailability(req, res, next);
 });
 
+searchRouter.get('/rentals', (req, res, next) => {
+    SearchController.getRentals(req, res, next);
+});
+
 module.exports = searchRouter;

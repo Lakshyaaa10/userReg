@@ -146,6 +146,6 @@ bookingSchema.index({ renterId: 1, status: 1 });
 bookingSchema.index({ ownerId: 1, status: 1 });
 bookingSchema.index({ startDate: 1, endDate: 1 });
 
-const Booking = mongoose.model('Booking', bookingSchema);
+const Booking = mongoose.models.Booking || mongoose.model('Booking', bookingSchema);
 
 module.exports = Booking;

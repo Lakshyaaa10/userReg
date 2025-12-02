@@ -64,6 +64,6 @@ availabilitySchema.index({ vehicleId: 1, date: 1 });
 availabilitySchema.index({ ownerId: 1, date: 1 });
 availabilitySchema.index({ date: 1, isAvailable: 1 });
 
-const Availability = mongoose.model('Availability', availabilitySchema);
+const Availability = mongoose.models.Availability || mongoose.model('Availability', availabilitySchema);
 
 module.exports = Availability;

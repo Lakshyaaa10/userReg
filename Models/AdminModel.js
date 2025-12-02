@@ -45,6 +45,10 @@ const adminSchema = new mongoose.Schema({
         type: Date,
         default: null
     },
+    token: {
+        type: String,
+        default: ''
+    },
     
     // RTO Assistance Specialization
     rtoSpecialization: [{
@@ -78,6 +82,6 @@ adminSchema.index({ email: 1 });
 adminSchema.index({ role: 1 });
 adminSchema.index({ isActive: 1 });
 
-const Admin = mongoose.model('Admin', adminSchema);
+const Admin = mongoose.models.Admin || mongoose.model('Admin', adminSchema);
 
 module.exports = Admin;
