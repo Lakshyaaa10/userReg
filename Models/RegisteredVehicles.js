@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const RegisteredVehiclesSchema = new mongoose.Schema(
     {
         userId: { type: mongoose.Schema.Types.ObjectId, ref: "users", required: true },
-        rentalId: { type: mongoose.Schema.Types.ObjectId, ref: "RegisterRental", required: false },
+        rentalId: { type: mongoose.Schema.Types.ObjectId, ref: "registerRentalSchema", required: false },
         registerId: { type: mongoose.Schema.Types.ObjectId, ref: "Register", required: false }, // Link to Register for personal details
         vehicleType: { type: String, required: true },
         vehicleMake: { type: String },
