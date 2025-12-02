@@ -102,12 +102,14 @@ SearchController.searchVehicles = async (req, res) => {
                     allVehicles.push({
                         _id: rental._id,
                         Name: register.Name || rental.userId?.username || 'N/A',
-                        VehicleModel: rental.vehicleModel,
+                        VehicleModel: rental.vehicleModel, // Backward compatibility
+                        vehicleModel: rental.vehicleModel, // New field name
                         vehicleType: rental.vehicleType,
                         rentalPrice: rental.rentalPrice,
                         City: register.City || rentalInfo.City || 'N/A',
                         State: register.State || rentalInfo.State || 'N/A',
-                        VehiclePhoto: rental.vehiclePhoto,
+                        VehiclePhoto: rental.vehiclePhoto, // Backward compatibility
+                        vehiclePhoto: rental.vehiclePhoto, // New field name
                         ContactNo: register.ContactNo || rentalInfo.ContactNo || rental.userId?.mobile || 'N/A',
                         Address: register.Address || rentalInfo.Address || 'N/A',
                         businessName: rentalInfo.businessName || '',
@@ -122,12 +124,14 @@ SearchController.searchVehicles = async (req, res) => {
                         allVehicles.push({
                             _id: rental._id,
                             Name: register.Name || rental.userId?.username || 'N/A',
-                            VehicleModel: additionalVehicle.model,
+                            VehicleModel: additionalVehicle.model, // Backward compatibility
+                            vehicleModel: additionalVehicle.model, // New field name
                             vehicleType: additionalVehicle.subcategory,
                             rentalPrice: additionalVehicle.rentalPrice,
                             City: register.City || rentalInfo.City || 'N/A',
                             State: register.State || rentalInfo.State || 'N/A',
-                            VehiclePhoto: additionalVehicle.photo || rental.vehiclePhoto,
+                            VehiclePhoto: additionalVehicle.photo || rental.vehiclePhoto, // Backward compatibility
+                            vehiclePhoto: additionalVehicle.photo || rental.vehiclePhoto, // New field name
                             ContactNo: register.ContactNo || rentalInfo.ContactNo || rental.userId?.mobile || 'N/A',
                             Address: register.Address || rentalInfo.Address || 'N/A',
                             businessName: rentalInfo.businessName || '',
@@ -220,7 +224,8 @@ SearchController.searchVehicles = async (req, res) => {
                     availableVehicles.push({
                         _id: vehicle._id,
                         Name: register.Name || vehicle.userId?.username || 'N/A',
-                        VehicleModel: vehicle.vehicleModel,
+                        VehicleModel: vehicle.vehicleModel, // Backward compatibility
+                        vehicleModel: vehicle.vehicleModel, // New field name
                         vehicleType: vehicle.vehicleType,
                         category: vehicle.category,
                         subcategory: vehicle.subcategory,
@@ -228,7 +233,8 @@ SearchController.searchVehicles = async (req, res) => {
                         hourlyPrice: vehicle.hourlyPrice,
                         City: register.City || rental.City || 'N/A',
                         State: register.State || rental.State || 'N/A',
-                        VehiclePhoto: vehicle.vehiclePhoto,
+                        VehiclePhoto: vehicle.vehiclePhoto, // Backward compatibility
+                        vehiclePhoto: vehicle.vehiclePhoto, // New field name
                         ContactNo: register.ContactNo || rental.ContactNo || vehicle.userId?.mobile || 'N/A',
                         Address: register.Address || rental.Address || 'N/A',
                         Landmark: register.Landmark || rental.Landmark || '',
@@ -315,7 +321,8 @@ SearchController.getVehicleDetails = async (req, res) => {
             vehicle = {
                 _id: registeredVehicle._id,
                 Name: register.Name || registeredVehicle.userId?.username || 'N/A',
-                VehicleModel: registeredVehicle.vehicleModel,
+                VehicleModel: registeredVehicle.vehicleModel, // Keep for backward compatibility
+                vehicleModel: registeredVehicle.vehicleModel, // New field name
                 vehicleType: registeredVehicle.vehicleType,
                 category: registeredVehicle.category,
                 subcategory: registeredVehicle.subcategory,
@@ -323,7 +330,8 @@ SearchController.getVehicleDetails = async (req, res) => {
                 hourlyPrice: registeredVehicle.hourlyPrice,
                 City: register.City || rental.City || 'N/A',
                 State: register.State || rental.State || 'N/A',
-                VehiclePhoto: registeredVehicle.vehiclePhoto,
+                VehiclePhoto: registeredVehicle.vehiclePhoto, // Keep for backward compatibility
+                vehiclePhoto: registeredVehicle.vehiclePhoto, // New field name
                 ContactNo: register.ContactNo || rental.ContactNo || registeredVehicle.userId?.mobile || 'N/A',
                 Address: register.Address || rental.Address || 'N/A',
                 Landmark: register.Landmark || rental.Landmark || '',
@@ -537,7 +545,8 @@ SearchController.getVehiclesByCategory = async (req, res) => {
                 allVehicles.push({
                 _id: vehicle._id,
                 Name: register.Name || vehicle.userId?.username || 'N/A',
-                VehicleModel: vehicle.vehicleModel,
+                VehicleModel: vehicle.vehicleModel, // Backward compatibility
+                vehicleModel: vehicle.vehicleModel, // New field name
                 vehicleType: vehicle.vehicleType,
                 category: vehicle.category,
                 subcategory: vehicle.subcategory,
@@ -545,7 +554,8 @@ SearchController.getVehiclesByCategory = async (req, res) => {
                 hourlyPrice: vehicle.hourlyPrice,
                 City: register.City || rental.City || 'N/A',
                 State: register.State || rental.State || 'N/A',
-                VehiclePhoto: vehicle.vehiclePhoto,
+                VehiclePhoto: vehicle.vehiclePhoto, // Backward compatibility
+                vehiclePhoto: vehicle.vehiclePhoto, // New field name
                 ContactNo: register.ContactNo || rental.ContactNo || vehicle.userId?.mobile || 'N/A',
                 Address: register.Address || rental.Address || 'N/A',
                 Landmark: register.Landmark || rental.Landmark || '',
@@ -563,7 +573,8 @@ SearchController.getVehiclesByCategory = async (req, res) => {
                     allVehicles.push({
                         _id: vehicle._id,
                         Name: register.Name || vehicle.userId?.username || 'N/A',
-                        VehicleModel: additionalVehicle.model,
+                        VehicleModel: additionalVehicle.model, // Backward compatibility
+                        vehicleModel: additionalVehicle.model, // New field name
                         vehicleType: additionalVehicle.subcategory,
                         category: additionalVehicle.category,
                         subcategory: additionalVehicle.subcategory,
@@ -571,7 +582,8 @@ SearchController.getVehiclesByCategory = async (req, res) => {
                         hourlyPrice: null,
                         City: register.City || rental.City || 'N/A',
                         State: register.State || rental.State || 'N/A',
-                        VehiclePhoto: additionalVehicle.photo || vehicle.vehiclePhoto,
+                        VehiclePhoto: additionalVehicle.photo || vehicle.vehiclePhoto, // Backward compatibility
+                        vehiclePhoto: additionalVehicle.photo || vehicle.vehiclePhoto, // New field name
                         ContactNo: register.ContactNo || rental.ContactNo || vehicle.userId?.mobile || 'N/A',
                         Address: register.Address || rental.Address || 'N/A',
                         Landmark: register.Landmark || rental.Landmark || '',
@@ -735,7 +747,8 @@ SearchController.getOwnerDetails = async (req, res) => {
                 Name: register.Name || registeredVehicle.userId?.username || 'N/A',
                 Age: register.Age || null,
                 ContactNo: register.ContactNo || rental.ContactNo || registeredVehicle.userId?.mobile || 'N/A',
-                VehicleModel: registeredVehicle.vehicleModel,
+                VehicleModel: registeredVehicle.vehicleModel, // Backward compatibility
+                vehicleModel: registeredVehicle.vehicleModel, // New field name
                 rentalPrice: registeredVehicle.rentalPrice,
                 hourlyPrice: registeredVehicle.hourlyPrice,
                 City: register.City || rental.City || 'N/A',
@@ -885,7 +898,8 @@ SearchController.checkAvailability = async (req, res) => {
             availabilityIssues: availabilityIssues,
             vehicle: {
                 _id: vehicle._id,
-                VehicleModel: vehicle.vehicleModel || vehicle.VehicleModel,
+                VehicleModel: vehicle.vehicleModel || vehicle.VehicleModel, // Backward compatibility
+                vehicleModel: vehicle.vehicleModel || vehicle.VehicleModel, // New field name
                 vehicleType: vehicle.vehicleType,
                 rentalPrice: vehicle.rentalPrice,
                 hourlyPrice: vehicle.hourlyPrice,
@@ -939,12 +953,14 @@ SearchController.getRentals=async (req, res) => {
                 nearbyRentals.push({
                     _id: rental._id,
                     Name: register.Name || rentalInfo.ownerName || 'N/A',
-                    VehicleModel: rental.vehicleModel,
+                    VehicleModel: rental.vehicleModel, // Backward compatibility
+                    vehicleModel: rental.vehicleModel, // New field name
                     vehicleType: rental.vehicleType,
                     rentalPrice: rental.rentalPrice,
                     City: register.City || rentalInfo.City || 'N/A',
                     State: register.State || rentalInfo.State || 'N/A',
-                    VehiclePhoto: rental.vehiclePhoto,
+                    VehiclePhoto: rental.vehiclePhoto, // Backward compatibility
+                    vehiclePhoto: rental.vehiclePhoto, // New field name
                     ContactNo: register.ContactNo || rentalInfo.ContactNo || 'N/A',
                     Address: register.Address || rentalInfo.Address || 'N/A',
                     latitude: vehicleLat,
