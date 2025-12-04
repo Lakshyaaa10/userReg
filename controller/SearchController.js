@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Helper = require('../Helper/Helper');
 const Register = require('../Models/RegisterModel');
 const RegisteredVehicles = require('../Models/RegisteredVehicles');
@@ -1110,5 +1111,212 @@ SearchController.getRentals = async (req, res) => {
     }
 };
 
+
+// Get all vehicles for a specific rental business
+SearchController.getRentalVehicles = async (req, res) => {
+    try {
+        const { rentalId } = req.params;
+        const { page = 1, limit = 20 } = req.query;
+        const skip = (page - 1) * limit;
+
+        if (!rentalId) {
+            return Helper.response("Failed", "Missing rentalId parameter", {}, res, 400);
+        }
+
+        // Validate rentalId format (MongoDB ObjectId)
+        if (!mongoose.Types.ObjectId.isValid(rentalId)) {
+            return Helper.response("Failed", "Invalid rentalId format", {}, res, 400);
+        }
+
+        // Find all verified vehicles for this rental business
+        const vehicles = await RegisteredVehicles.find({
+            rentalId: rentalId,
+            verificationStatus: 'verified',
+            isAvailable: true
+        })
+        .populate('userId', 'username email mobile')
+        .populate('registerId', 'Name Age Address Landmark Pincode City State ContactNo latitude longitude')
+        .populate('rentalId', 'businessName ownerName City State Address Landmark Pincode ContactNo latitude longitude')
+        .select('vehicleModel vehicleType vehicleMake category subcategory rentalPrice hourlyPrice vehiclePhoto licensePlate additionalVehicles ReturnDuration createdAt')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit));
+
+        // Get total count for pagination
+        const totalCount = await RegisteredVehicles.countDocuments({
+            rentalId: rentalId,
+            verificationStatus: 'verified',
+            isAvailable: true
+        });
+
+        // Get rental business details
+        const rentalBusiness = await Rentals.findById(rentalId);
+
+        if (!rentalBusiness) {
+            return Helper.response("Failed", "Rental business not found", {}, res, 404);
+        }
+
+        // Format vehicles response including additional vehicles
+        const formattedVehicles = [];
+        
+        for (const vehicle of vehicles) {
+            const register = vehicle.registerId || {};
+            const rentalInfo = vehicle.rentalId || {};
+            
+            // Get business name
+            const businessName = rentalInfo.businessName || rentalBusiness.businessName || 'N/A';
+            
+            // Format location
+            const city = register.City || rentalInfo.City || rentalBusiness.City || 'N/A';
+            const state = register.State || rentalInfo.State || rentalBusiness.State || 'N/A';
+            const location = city !== 'N/A' && state !== 'N/A' ? `${city}, ${state}` : city;
+            
+            // Default rating (can be enhanced with actual rating system)
+            const rating = 4.5;
+            const reviewCount = 274;
+            
+            // Format price
+            const pricePerDay = vehicle.rentalPrice || 0;
+            const formattedPrice = `₹${pricePerDay}/day`;
+            
+            // Add main vehicle
+            formattedVehicles.push({
+                _id: vehicle._id,
+                // Business/Provider Information
+                businessName: businessName,
+                providerName: businessName,
+                ownerName: rentalInfo.ownerName || rentalBusiness.ownerName || register.Name || 'N/A',
+                
+                // Location Information
+                location: location,
+                City: city,
+                State: state,
+                Address: register.Address || rentalInfo.Address || rentalBusiness.Address || 'N/A',
+                Landmark: register.Landmark || rentalInfo.Landmark || rentalBusiness.Landmark || '',
+                Pincode: register.Pincode || rentalInfo.Pincode || rentalBusiness.Pincode || '',
+                latitude: register.latitude || rentalInfo.latitude || rentalBusiness.latitude,
+                longitude: register.longitude || rentalInfo.longitude || rentalBusiness.longitude,
+                
+                // Vehicle Information
+                VehicleModel: vehicle.vehicleModel,
+                vehicleModel: vehicle.vehicleModel,
+                vehicleMake: vehicle.vehicleMake || '',
+                vehicleType: vehicle.vehicleType,
+                category: vehicle.category,
+                subcategory: vehicle.subcategory,
+                licensePlate: vehicle.licensePlate,
+                
+                // Pricing Information
+                rentalPrice: vehicle.rentalPrice,
+                hourlyPrice: vehicle.hourlyPrice,
+                pricePerDay: formattedPrice,
+                price: pricePerDay,
+                
+                // Media
+                VehiclePhoto: vehicle.vehiclePhoto,
+                vehiclePhoto: vehicle.vehiclePhoto,
+                
+                // Rating Information
+                rating: rating,
+                reviewCount: reviewCount,
+                reviews: reviewCount,
+                
+                // Contact Information
+                ContactNo: register.ContactNo || rentalInfo.ContactNo || rentalBusiness.ContactNo || vehicle.userId?.mobile || 'N/A',
+                
+                // Additional Information
+                ReturnDuration: vehicle.ReturnDuration || 'Not specified',
+                isMainVehicle: true,
+                source: 'rental',
+                hasAdditionalVehicles: vehicle.additionalVehicles && vehicle.additionalVehicles.length > 0,
+                createdAt: vehicle.createdAt
+            });
+            
+            // Add additional vehicles if they exist
+            if (vehicle.additionalVehicles && vehicle.additionalVehicles.length > 0) {
+                for (const additionalVehicle of vehicle.additionalVehicles) {
+                    formattedVehicles.push({
+                        _id: vehicle._id,
+                        // Business/Provider Information
+                        businessName: businessName,
+                        providerName: businessName,
+                        ownerName: rentalInfo.ownerName || rentalBusiness.ownerName || register.Name || 'N/A',
+                        
+                        // Location Information
+                        location: location,
+                        City: city,
+                        State: state,
+                        Address: register.Address || rentalInfo.Address || rentalBusiness.Address || 'N/A',
+                        Landmark: register.Landmark || rentalInfo.Landmark || rentalBusiness.Landmark || '',
+                        Pincode: register.Pincode || rentalInfo.Pincode || rentalBusiness.Pincode || '',
+                        latitude: register.latitude || rentalInfo.latitude || rentalBusiness.latitude,
+                        longitude: register.longitude || rentalInfo.longitude || rentalBusiness.longitude,
+                        
+                        // Vehicle Information
+                        VehicleModel: additionalVehicle.model,
+                        vehicleModel: additionalVehicle.model,
+                        vehicleType: additionalVehicle.subcategory,
+                        category: additionalVehicle.category,
+                        subcategory: additionalVehicle.subcategory,
+                        licensePlate: vehicle.licensePlate,
+                        
+                        // Pricing Information
+                        rentalPrice: additionalVehicle.rentalPrice,
+                        hourlyPrice: null,
+                        pricePerDay: `₹${additionalVehicle.rentalPrice}/day`,
+                        price: additionalVehicle.rentalPrice,
+                        
+                        // Media
+                        VehiclePhoto: additionalVehicle.photo || vehicle.vehiclePhoto,
+                        vehiclePhoto: additionalVehicle.photo || vehicle.vehiclePhoto,
+                        
+                        // Rating Information
+                        rating: rating,
+                        reviewCount: reviewCount,
+                        reviews: reviewCount,
+                        
+                        // Contact Information
+                        ContactNo: register.ContactNo || rentalInfo.ContactNo || rentalBusiness.ContactNo || vehicle.userId?.mobile || 'N/A',
+                        
+                        // Additional Information
+                        ReturnDuration: vehicle.ReturnDuration || 'Not specified',
+                        isMainVehicle: false,
+                        additionalVehicleId: additionalVehicle._id,
+                        source: 'rental'
+                    });
+                }
+            }
+        }
+
+        // Get rental business summary
+        const rentalSummary = {
+            _id: rentalBusiness._id,
+            businessName: rentalBusiness.businessName,
+            ownerName: rentalBusiness.ownerName,
+            City: rentalBusiness.City,
+            State: rentalBusiness.State,
+            Address: rentalBusiness.Address,
+            ContactNo: rentalBusiness.ContactNo,
+            totalVehicles: totalCount,
+            availableVehicles: formattedVehicles.length
+        };
+
+        Helper.response("Success", "Rental vehicles retrieved successfully", {
+            rental: rentalSummary,
+            vehicles: formattedVehicles,
+            pagination: {
+                currentPage: parseInt(page),
+                totalPages: Math.ceil(totalCount / limit),
+                totalCount: totalCount,
+                hasNextPage: skip + parseInt(limit) < totalCount,
+                hasPrevPage: page > 1
+            }
+        }, res, 200);
+
+    } catch (error) {
+        console.error('Get rental vehicles error:', error);
+        Helper.response("Failed", "Internal Server Error", error.message, res, 500);
+    }
+};
 
 module.exports = SearchController;
