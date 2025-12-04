@@ -46,4 +46,9 @@ searchRouter.get('/rentals', (req, res, next) => {
     SearchController.getRentals(req, res, next);
 });
 
+// Get all vehicles for a specific rental business
+searchRouter.get('/rental/:rentalId/vehicles', (req, res, next) => {
+    SearchController.getRentalVehicles(req, res, next);
+});
+
 module.exports = searchRouter;
