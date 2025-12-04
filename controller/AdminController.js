@@ -648,6 +648,15 @@ AdminController.verifyVehicle = async (req, res) => {
             return Helper.response("Failed", "Vehicle not found", {}, res, 404);
         }
 
+        // For RegisteredVehicles, ensure required fields are present before saving
+        if (isRegisteredVehicle) {
+            // Ensure ReturnDuration exists (required field)
+            // This handles cases where vehicles were created before ReturnDuration was required
+            if (!vehicle.ReturnDuration || (typeof vehicle.ReturnDuration === 'string' && vehicle.ReturnDuration.trim() === '')) {
+                vehicle.ReturnDuration = 'Not specified';
+            }
+        }
+
         // Update verification status
         vehicle.verificationStatus = status;
         vehicle.verifiedBy = adminId;
