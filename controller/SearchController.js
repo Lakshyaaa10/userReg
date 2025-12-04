@@ -937,7 +937,7 @@ SearchController.getRentals = async (req, res) => {
         .populate('registerId', 'Name City State Address Landmark Pincode ContactNo latitude longitude')
         .populate('rentalId', 'businessName ownerName City State Address Landmark Pincode ContactNo latitude longitude')
         .populate('userId', 'username email mobile')
-        .select('vehicleModel vehicleType vehicleMake category subcategory rentalPrice hourlyPrice vehiclePhoto licensePlate additionalVehicles ReturnDuration')
+        .select('vehicleModel vehicleType vehicleMake category subcategory rentalPrice hourlyPrice vehiclePhoto licensePlate additionalVehicles ReturnDuration rentalId')
         .sort({ createdAt: -1 });
         
         // Calculate distance and filter by radius, then format response
@@ -973,8 +973,14 @@ SearchController.getRentals = async (req, res) => {
                 const formattedPrice = `₹${pricePerDay}/day`;
                 
                 // Add main vehicle
+                // Extract rentalId as string (handle both populated object and string)
+                const rentalIdValue = rental.rentalId ? 
+                    (typeof rental.rentalId === 'object' ? rental.rentalId._id || rental.rentalId.toString() : rental.rentalId.toString()) 
+                    : null;
+                
                 nearbyRentals.push({
                     _id: rental._id,
+                    rentalId: rentalIdValue, // Include rentalId for navigation (as string)
                     // Business/Provider Information
                     businessName: businessName,
                     providerName: businessName, // Alias for backward compatibility
@@ -1025,12 +1031,13 @@ SearchController.getRentals = async (req, res) => {
                     hasAdditionalVehicles: rental.additionalVehicles && rental.additionalVehicles.length > 0
                 });
                 
-                // Add additional vehicles if they exist
-                if (rental.additionalVehicles && rental.additionalVehicles.length > 0) {
-                    for (const additionalVehicle of rental.additionalVehicles) {
-                        nearbyRentals.push({
-                            _id: rental._id,
-                            // Business/Provider Information
+                    // Add additional vehicles if they exist
+                    if (rental.additionalVehicles && rental.additionalVehicles.length > 0) {
+                        for (const additionalVehicle of rental.additionalVehicles) {
+                            nearbyRentals.push({
+                                _id: rental._id,
+                                rentalId: rentalIdValue, // Include rentalId for navigation (as string)
+                                // Business/Provider Information
                             businessName: businessName,
                             providerName: businessName,
                             ownerName: rentalInfo.ownerName || register.Name || 'N/A',
