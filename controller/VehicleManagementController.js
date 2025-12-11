@@ -110,8 +110,16 @@ VehicleManagementController.getVehicleById = async (req, res) => {
 VehicleManagementController.updateVehicle = async (req, res) => {
     try {
         const { vehicleId } = req.params;
-        const { userId } = req.body;
-        const updateData = req.body;
+        // Get userId from body (for FormData) or query (for JSON)
+        const userId = req.body?.userId || req.query?.userId;
+        
+        // Create updateData from body, excluding userId
+        const updateData = {};
+        Object.keys(req.body).forEach(key => {
+            if (key !== 'userId') {
+                updateData[key] = req.body[key];
+            }
+        });
 
         if (!vehicleId || !userId) {
             return Helper.response("Failed", "Missing vehicleId or userId", {}, res, 400);
@@ -140,6 +148,73 @@ VehicleManagementController.updateVehicle = async (req, res) => {
             return Helper.response("Failed", "Vehicle not found or unauthorized", {}, res, 404);
         }
         
+        // Handle file uploads if any files are provided
+        if (req.files) {
+            // Upload vehicle photo if provided
+            if (req.files.vehiclePhoto && req.files.vehiclePhoto.tempFilePath) {
+                try {
+                    const upload = await Helper.uploadVehicle(req.files.vehiclePhoto);
+                    if (upload) {
+                        updateData.vehiclePhoto = upload;
+                    }
+                } catch (uploadError) {
+                    console.error('Error uploading vehicle photo:', uploadError);
+                }
+            }
+
+            // Upload address proof if provided
+            if (req.files.addressPhoto && req.files.addressPhoto.tempFilePath) {
+                try {
+                    const upload = await Helper.uploadVehicle(req.files.addressPhoto);
+                    if (upload) {
+                        updateData.addressPhoto = upload;
+                        // Also update in Register model if registerId exists
+                        if (existingVehicle.registerId) {
+                            await Register.findByIdAndUpdate(
+                                existingVehicle.registerId,
+                                { AddressProof: upload, updatedAt: new Date() },
+                                { new: true }
+                            );
+                        }
+                    }
+                } catch (uploadError) {
+                    console.error('Error uploading address proof:', uploadError);
+                }
+            }
+
+            // Upload vehicle RC if provided
+            if (req.files.vehicleRC && req.files.vehicleRC.tempFilePath) {
+                try {
+                    const upload = await Helper.uploadVehicle(req.files.vehicleRC);
+                    if (upload) {
+                        updateData.vehicleRC = upload;
+                    }
+                } catch (uploadError) {
+                    console.error('Error uploading vehicle RC:', uploadError);
+                }
+            }
+
+            // Upload PUC certificate if provided
+            if (req.files.PUC && req.files.PUC.tempFilePath) {
+                try {
+                    const upload = await Helper.uploadVehicle(req.files.PUC);
+                    if (upload) {
+                        updateData.PUC = upload;
+                        // Also update in Register model if registerId exists
+                        if (existingVehicle.registerId) {
+                            await Register.findByIdAndUpdate(
+                                existingVehicle.registerId,
+                                { PollutionCertificate: upload, updatedAt: new Date() },
+                                { new: true }
+                            );
+                        }
+                    }
+                } catch (uploadError) {
+                    console.error('Error uploading PUC:', uploadError);
+                }
+            }
+        }
+        
         // If personal details need to be updated, update Register model
         if (updateData.address || updateData.city || updateData.state || updateData.pincode || updateData.contactNo) {
             if (existingVehicle.registerId) {
@@ -164,7 +239,6 @@ VehicleManagementController.updateVehicle = async (req, res) => {
         delete updateData.state;
         delete updateData.pincode;
         delete updateData.contactNo;
-        delete updateData.returnDuration; // This might be in RegisteredVehicles, check schema
 
         // Check if vehicle has active bookings
         const activeBookings = await Booking.find({
