@@ -37,4 +37,9 @@ bookingRouter.post('/cancel', (req, res, next) => {
     BookingController.cancelBooking(req, res, next);
 });
 
+// Get booking by ID (must be last to avoid route conflicts)
+bookingRouter.get('/:bookingId', (req, res, next) => {
+    BookingController.getBookingById(req, res, next);
+});
+
 module.exports = bookingRouter;

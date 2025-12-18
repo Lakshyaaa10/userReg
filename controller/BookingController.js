@@ -404,4 +404,30 @@ BookingController.cancelBooking = async (req, res) => {
     }
 };
 
+// Get booking by ID
+BookingController.getBookingById = async (req, res) => {
+    try {
+        const { bookingId } = req.params;
+        
+        if (!bookingId) {
+            return Helper.response("Failed", "Missing bookingId", {}, res, 400);
+        }
+
+        const booking = await Booking.findById(bookingId)
+            .populate('vehicleId', 'vehicleModel vehicleType vehiclePhoto')
+            .populate('renterId', 'mobile email username fullName')
+            .populate('ownerId', 'Name ContactNo');
+
+        if (!booking) {
+            return Helper.response("Failed", "Booking not found", {}, res, 404);
+        }
+
+        Helper.response("Success", "Booking retrieved successfully", booking, res, 200);
+
+    } catch (error) {
+        console.error('Get booking by ID error:', error);
+        Helper.response("Failed", "Internal Server Error", error.message, res, 500);
+    }
+};
+
 module.exports = BookingController;
