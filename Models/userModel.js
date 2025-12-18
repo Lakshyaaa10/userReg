@@ -5,8 +5,9 @@ const mongoose = require("mongoose");
 const Users = new mongoose.Schema({
     mobile:{
         type:Number,
-        required:true,
-        unique:true
+        default:null,
+        unique:true,
+        sparse:true
     },
     createdAt:{
         type:Date,
@@ -19,7 +20,13 @@ const Users = new mongoose.Schema({
     },
     password:{
         type:String,
-        required:true
+        default:""
+    },
+    googleId:{
+        type:String,
+        default:"",
+        unique:true,
+        sparse:true
     },
     email:{
         type:String,
@@ -27,8 +34,9 @@ const Users = new mongoose.Schema({
     },
     username:{
         type:String,
-        required:true,
-        unique:true
+        default:"",
+        unique:true,
+        sparse:true
     },
     // User profile fields
     fullName: {

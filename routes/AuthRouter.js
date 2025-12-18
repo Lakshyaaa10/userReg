@@ -5,6 +5,9 @@ const Auth = require("../controller/AuthController")
 AuthRoutes.post( "/signup", (req, res,next) =>{
      Auth.createUser(req,res,next)
 })
+AuthRoutes.post( "/register", (req, res,next) =>{
+     Auth.createUser(req,res,next)
+})
 AuthRoutes.get("/test",(req,res)=>{
     console.log('hii')
 } )
@@ -16,6 +19,9 @@ AuthRoutes.post('/logout',(req,res,next)=>{
 })
 AuthRoutes.get('/getUser',(req,res,next)=>{
     Auth.getUserDetails(req,res,next)
+})
+AuthRoutes.post('/google-auth',(req,res,next)=>{
+    Auth.googleAuth(req,res,next)
 })
 
 module.exports = AuthRoutes
