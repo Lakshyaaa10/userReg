@@ -39,7 +39,7 @@ SearchController.searchVehicles = async (req, res) => {
         } = req.query;
 
         const skip = (page - 1) * limit;
-        
+
         // Use RegisteredVehicles as primary model
         // City filter will be applied after populating registerId/rentalId
         let registeredVehiclesQuery = { verificationStatus: 'verified' };
@@ -90,14 +90,14 @@ SearchController.searchVehicles = async (req, res) => {
             for (const rental of allRentals) {
                 const register = rental.registerId || {};
                 const rentalInfo = rental.rentalId || {};
-                
+
                 // Apply city filter if specified
                 if (city) {
                     const cityMatch = (register.City && new RegExp(city, 'i').test(register.City)) ||
-                                     (rentalInfo.City && new RegExp(city, 'i').test(rentalInfo.City));
+                        (rentalInfo.City && new RegExp(city, 'i').test(rentalInfo.City));
                     if (!cityMatch) continue;
                 }
-                
+
                 // Add main vehicle
                 if (rental.vehicleModel && rental.vehicleType) {
                     allVehicles.push({
@@ -169,7 +169,7 @@ SearchController.searchVehicles = async (req, res) => {
             // No date filter, but still check for current bookings
             // Use RegisteredVehicles as primary model for vehicle listings
             const registeredVehiclesQuery = { verificationStatus: 'verified' };
-            
+
             // Apply filters to registered vehicles query
             if (vehicleType && vehicleType !== 'all' && vehicleType !== 'All') {
                 registeredVehiclesQuery.vehicleType = { $regex: new RegExp(`^${vehicleType}$`, 'i') };
@@ -193,7 +193,7 @@ SearchController.searchVehicles = async (req, res) => {
             today.setHours(0, 0, 0, 0); // Start of today
 
             availableVehicles = [];
-            
+
             // Process RegisteredVehicles model vehicles (primary model)
             for (const vehicle of allRegisteredVehicles) {
                 // Check if vehicle has any active bookings
@@ -207,21 +207,21 @@ SearchController.searchVehicles = async (req, res) => {
                     // Get personal details from Register model (via registerId) or rentalId
                     const register = vehicle.registerId || {};
                     const rental = vehicle.rentalId || {};
-                    
+
                     // Apply city filter if specified
                     if (city) {
                         const cityMatch = (register.City && new RegExp(city, 'i').test(register.City)) ||
-                                         (rental.City && new RegExp(city, 'i').test(rental.City));
+                            (rental.City && new RegExp(city, 'i').test(rental.City));
                         if (!cityMatch) continue;
                     }
-                    
+
                     // Apply location filter if specified
                     if (latitude && longitude) {
                         const vehicleLat = vehicle.latitude || register.latitude || rental.latitude;
                         const vehicleLon = vehicle.longitude || register.longitude || rental.longitude;
                         if (!vehicleLat || !vehicleLon) continue;
                     }
-                    
+
                     availableVehicles.push({
                         _id: vehicle._id,
                         Name: register.Name || vehicle.userId?.username || 'N/A',
@@ -311,9 +311,9 @@ SearchController.getVehicleDetails = async (req, res) => {
             _id: vehicleId,
             verificationStatus: 'verified'
         })
-        .populate('userId', 'username email mobile')
-        .populate('registerId', 'Name Age Address Landmark Pincode City State ContactNo latitude longitude')
-        .populate('rentalId', 'City State Address Landmark Pincode latitude longitude ContactNo');
+            .populate('userId', 'username email mobile')
+            .populate('registerId', 'Name Age Address Landmark Pincode City State ContactNo latitude longitude')
+            .populate('rentalId', 'City State Address Landmark Pincode latitude longitude ContactNo');
 
         let vehicle = null;
         if (registeredVehicle) {
@@ -369,7 +369,7 @@ SearchController.getVehicleDetails = async (req, res) => {
     }
 };
 
-        // Get popular cities
+// Get popular cities
 SearchController.getPopularCities = async (req, res) => {
     try {
         // Use RegisteredVehicles as primary model and lookup City from Register via registerId
@@ -521,29 +521,29 @@ SearchController.getVehiclesByCategory = async (req, res) => {
 
         // Flatten vehicles from main field and additionalVehicles array
         let allVehicles = [];
-        
+
         // Process RegisteredVehicles model vehicles (primary model)
         for (const vehicle of allRegisteredVehicles) {
             // Get personal details from Register model (via registerId) or rentalId
             const register = vehicle.registerId || {};
             const rental = vehicle.rentalId || {};
-            
+
             // Apply city filter if specified
             if (city) {
                 const cityMatch = (register.City && new RegExp(city, 'i').test(register.City)) ||
-                                 (rental.City && new RegExp(city, 'i').test(rental.City));
+                    (rental.City && new RegExp(city, 'i').test(rental.City));
                 if (!cityMatch) continue;
             }
-            
+
             // Apply location filter if specified
             if (latitude && longitude) {
                 const vehicleLat = vehicle.latitude || register.latitude || rental.latitude;
                 const vehicleLon = vehicle.longitude || register.longitude || rental.longitude;
                 if (!vehicleLat || !vehicleLon) continue;
             }
-            
+
             // Add main vehicle
-                allVehicles.push({
+            allVehicles.push({
                 _id: vehicle._id,
                 Name: register.Name || vehicle.userId?.username || 'N/A',
                 VehicleModel: vehicle.vehicleModel, // Backward compatibility
@@ -736,9 +736,9 @@ SearchController.getOwnerDetails = async (req, res) => {
             _id: vehicleId,
             verificationStatus: 'verified'
         })
-        .populate('userId', 'username email mobile')
-        .populate('registerId', 'Name Age Address Landmark Pincode City State ContactNo latitude longitude')
-        .populate('rentalId', 'City State Address Landmark Pincode latitude longitude ContactNo');
+            .populate('userId', 'username email mobile')
+            .populate('registerId', 'Name Age Address Landmark Pincode City State ContactNo latitude longitude')
+            .populate('rentalId', 'City State Address Landmark Pincode latitude longitude ContactNo');
 
         let owner = null;
         if (registeredVehicle) {
@@ -802,9 +802,9 @@ SearchController.checkAvailability = async (req, res) => {
             _id: vehicleId,
             verificationStatus: 'verified'
         })
-        .populate('registerId', 'City State')
-        .populate('rentalId', 'City State');
-        
+            .populate('registerId', 'City State')
+            .populate('rentalId', 'City State');
+
         let vehicle = null;
         if (registeredVehicle) {
             const register = registeredVehicle.registerId || {};
@@ -821,7 +821,7 @@ SearchController.checkAvailability = async (req, res) => {
                 source: 'registered'
             };
         }
-        
+
         if (!vehicle) {
             return Helper.response("Failed", "Vehicle not found or not verified", {}, res, 404);
         }
@@ -918,7 +918,7 @@ SearchController.checkAvailability = async (req, res) => {
 SearchController.getRentals = async (req, res) => {
     try {
         const { latitude, longitude, radius = 50, page = 1, limit = 20 } = req.query;
-        
+
         if (!latitude || !longitude) {
             return Helper.response("Failed", "Missing latitude or longitude", {}, res, 400);
         }
@@ -926,178 +926,106 @@ SearchController.getRentals = async (req, res) => {
         const userLon = parseFloat(longitude);
         const radiusInKm = parseFloat(radius);
         const skip = (page - 1) * limit;
-        
+
         // Find all verified vehicles from RegisteredVehicles with rentalId (rental businesses)
-        // Populate registerId and rentalId for complete business and location data
-        const rentals = await RegisteredVehicles.find({
+        // We need to aggregate to find unique rentalIds first or fetch all and filter in JS (easier for complex populations)
+        // Given complexity of populations, we'll fetch vehicles and deduplicate in JS for now
+        // A more efficient way for large datasets would be an aggregation pipeline
+
+        const vehicles = await RegisteredVehicles.find({
             verificationStatus: 'verified',
             rentalId: { $ne: null }, // Only vehicles linked to rental businesses
-            isAvailable: true // Only available vehicles
+            isAvailable: true
         })
-        .populate('registerId', 'Name City State Address Landmark Pincode ContactNo latitude longitude')
-        .populate('rentalId', 'businessName ownerName City State Address Landmark Pincode ContactNo latitude longitude')
-        .populate('userId', 'username email mobile')
-        .select('vehicleModel vehicleType vehicleMake category subcategory rentalPrice hourlyPrice vehiclePhoto licensePlate additionalVehicles ReturnDuration rentalId')
-        .sort({ createdAt: -1 });
-        
-        // Calculate distance and filter by radius, then format response
-        const nearbyRentals = [];
-        for (const rental of rentals) {
-            const register = rental.registerId || {};
-            const rentalInfo = rental.rentalId || {};
-            
-            // Get location from registerId or rentalId
+            .populate('registerId', 'Name City State Address Landmark Pincode ContactNo latitude longitude')
+            .populate('rentalId', 'businessName ownerName City State Address Landmark Pincode ContactNo latitude longitude rentalImage')
+            .sort({ createdAt: -1 });
+
+        // Map key: rentalId (string) -> Rental Object
+        const rentalMap = new Map();
+
+        for (const vehicle of vehicles) {
+            if (!vehicle.rentalId) continue;
+
+            // Handle rentalId being populated or string
+            const rentalIdObj = vehicle.rentalId;
+            const rentalIdStr = rentalIdObj._id ? rentalIdObj._id.toString() : rentalIdObj.toString();
+
+            // Skip if already processed
+            if (rentalMap.has(rentalIdStr)) {
+                // Update vehicle count or low price if needed
+                const existing = rentalMap.get(rentalIdStr);
+                existing.vehicleCount += 1;
+                // Keep the lowest price found
+                if (vehicle.rentalPrice < existing.rentalPrice) {
+                    existing.rentalPrice = vehicle.rentalPrice;
+                    existing.formattedPrice = `₹${vehicle.rentalPrice}/day`;
+                }
+                continue;
+            }
+
+            const register = vehicle.registerId || {};
+            const rentalInfo = rentalIdObj; // It's populated
+
+            // Get location
             const vehicleLat = register.latitude || rentalInfo.latitude;
             const vehicleLon = register.longitude || rentalInfo.longitude;
-            
+
             if (!vehicleLat || !vehicleLon) continue;
-            
+
             const distance = calculateDistance(userLat, userLon, vehicleLat, vehicleLon);
-            
+
             if (distance <= radiusInKm) {
-                // Get business name (provider name)
+                // Get business name type stuff
                 const businessName = rentalInfo.businessName || rentalInfo.ownerName || register.Name || 'N/A';
-                
-                // Format location (City, State)
                 const city = register.City || rentalInfo.City || 'N/A';
                 const state = register.State || rentalInfo.State || 'N/A';
                 const location = city !== 'N/A' && state !== 'N/A' ? `${city}, ${state}` : city;
-                
-                // Calculate rating from completed bookings (placeholder - you can enhance this)
-                // For now, using a default rating. You can calculate from bookings if you have a rating system
-                const rating = 4.5; // Default rating - can be calculated from bookings/reviews
-                const reviewCount = 274; // Default review count - can be calculated from bookings
-                
-                // Format price per day
-                const pricePerDay = rental.rentalPrice || 0;
-                const formattedPrice = `₹${pricePerDay}/day`;
-                
-                // Add main vehicle
-                // Extract rentalId as string (handle both populated object and string)
-                const rentalIdValue = rental.rentalId ? 
-                    (typeof rental.rentalId === 'object' ? rental.rentalId._id || rental.rentalId.toString() : rental.rentalId.toString()) 
-                    : null;
-                
-                nearbyRentals.push({
-                    _id: rental._id,
-                    rentalId: rentalIdValue, // Include rentalId for navigation (as string)
-                    // Business/Provider Information
+
+                // Create rental entry
+                rentalMap.set(rentalIdStr, {
+                    _id: rentalIdStr, // Using rentalId as the main ID for the card
+                    rentalId: rentalIdStr,
                     businessName: businessName,
-                    providerName: businessName, // Alias for backward compatibility
                     ownerName: rentalInfo.ownerName || register.Name || 'N/A',
-                    
-                    // Location Information
                     location: location,
                     City: city,
                     State: state,
                     Address: register.Address || rentalInfo.Address || 'N/A',
-                    Landmark: register.Landmark || rentalInfo.Landmark || '',
-                    Pincode: register.Pincode || rentalInfo.Pincode || '',
+
+                    // Location
                     latitude: vehicleLat,
                     longitude: vehicleLon,
                     distance: parseFloat(distance.toFixed(2)),
-                    
-                    // Vehicle Information
-                    VehicleModel: rental.vehicleModel, // Backward compatibility
-                    vehicleModel: rental.vehicleModel, // New field name
-                    vehicleMake: rental.vehicleMake || '',
-                    vehicleType: rental.vehicleType,
-                    category: rental.category,
-                    subcategory: rental.subcategory,
-                    licensePlate: rental.licensePlate,
-                    
-                    // Pricing Information
-                    rentalPrice: rental.rentalPrice,
-                    hourlyPrice: rental.hourlyPrice,
-                    pricePerDay: formattedPrice,
-                    price: pricePerDay, // Alias for backward compatibility
-                    
-                    // Media
-                    VehiclePhoto: rental.vehiclePhoto, // Backward compatibility
-                    vehiclePhoto: rental.vehiclePhoto, // New field name
-                    
-                    // Rating Information
-                    rating: rating,
-                    reviewCount: reviewCount,
-                    reviews: reviewCount, // Alias
-                    
-                    // Contact Information
-                    ContactNo: register.ContactNo || rentalInfo.ContactNo || rental.userId?.mobile || 'N/A',
-                    
-                    // Additional Information
-                    ReturnDuration: rental.ReturnDuration || 'Not specified',
-                    isMainVehicle: true,
-                    source: 'rental',
-                    hasAdditionalVehicles: rental.additionalVehicles && rental.additionalVehicles.length > 0
+
+                    // Display Info
+                    vehicleCount: 1, // Start with 1
+                    vehiclePhoto: vehicle.vehiclePhoto, // Use first vehicle found as placeholder if rental image not available
+                    rentalImage: rentalInfo.rentalImage, // PROMOTED: Rental Business Image
+
+                    // Pricing (Starts from)
+                    rentalPrice: vehicle.rentalPrice,
+                    formattedPrice: `₹${vehicle.rentalPrice}/day`,
+
+                    // Rating (Mock for now)
+                    rating: 4.5,
+                    reviewCount: 274,
+
+                    // Contact
+                    ContactNo: register.ContactNo || rentalInfo.ContactNo || 'N/A'
                 });
-                
-                    // Add additional vehicles if they exist
-                    if (rental.additionalVehicles && rental.additionalVehicles.length > 0) {
-                        for (const additionalVehicle of rental.additionalVehicles) {
-                            nearbyRentals.push({
-                                _id: rental._id,
-                                rentalId: rentalIdValue, // Include rentalId for navigation (as string)
-                                // Business/Provider Information
-                            businessName: businessName,
-                            providerName: businessName,
-                            ownerName: rentalInfo.ownerName || register.Name || 'N/A',
-                            
-                            // Location Information
-                            location: location,
-                            City: city,
-                            State: state,
-                            Address: register.Address || rentalInfo.Address || 'N/A',
-                            Landmark: register.Landmark || rentalInfo.Landmark || '',
-                            Pincode: register.Pincode || rentalInfo.Pincode || '',
-                            latitude: vehicleLat,
-                            longitude: vehicleLon,
-                            distance: parseFloat(distance.toFixed(2)),
-                            
-                            // Vehicle Information
-                            VehicleModel: additionalVehicle.model, // Backward compatibility
-                            vehicleModel: additionalVehicle.model, // New field name
-                            vehicleType: additionalVehicle.subcategory,
-                            category: additionalVehicle.category,
-                            subcategory: additionalVehicle.subcategory,
-                            licensePlate: rental.licensePlate,
-                            
-                            // Pricing Information
-                            rentalPrice: additionalVehicle.rentalPrice,
-                            hourlyPrice: null,
-                            pricePerDay: `₹${additionalVehicle.rentalPrice}/day`,
-                            price: additionalVehicle.rentalPrice,
-                            
-                            // Media
-                            VehiclePhoto: additionalVehicle.photo || rental.vehiclePhoto, // Backward compatibility
-                            vehiclePhoto: additionalVehicle.photo || rental.vehiclePhoto, // New field name
-                            
-                            // Rating Information
-                            rating: rating,
-                            reviewCount: reviewCount,
-                            reviews: reviewCount,
-                            
-                            // Contact Information
-                            ContactNo: register.ContactNo || rentalInfo.ContactNo || rental.userId?.mobile || 'N/A',
-                            
-                            // Additional Information
-                            ReturnDuration: rental.ReturnDuration || 'Not specified',
-                            isMainVehicle: false,
-                            additionalVehicleId: additionalVehicle._id,
-                            source: 'rental'
-                        });
-                    }
-                }
             }
         }
-        
-        // Sort by distance (nearest first)
+
+        // Convert map to array and sort
+        const nearbyRentals = Array.from(rentalMap.values());
         nearbyRentals.sort((a, b) => a.distance - b.distance);
-        
+
         // Pagination
         const totalCount = nearbyRentals.length;
         const paginatedRentals = nearbyRentals.slice(skip, skip + parseInt(limit));
-        
-        Helper.response("Success", "Nearby rentals retrieved successfully", {
+
+        Helper.response("Success", "Nearby rental businesses retrieved successfully", {
             rentals: paginatedRentals,
             pagination: {
                 currentPage: parseInt(page),
@@ -1112,6 +1040,7 @@ SearchController.getRentals = async (req, res) => {
                 radius: radiusInKm
             }
         }, res, 200);
+
     } catch (error) {
         console.error('Get rentals nearby error:', error);
         Helper.response("Failed", "Internal Server Error", error.message, res, 500);
@@ -1141,13 +1070,13 @@ SearchController.getRentalVehicles = async (req, res) => {
             verificationStatus: 'verified',
             isAvailable: true
         })
-        .populate('userId', 'username email mobile')
-        .populate('registerId', 'Name Age Address Landmark Pincode City State ContactNo latitude longitude')
-        .populate('rentalId', 'businessName ownerName City State Address Landmark Pincode ContactNo latitude longitude')
-        .select('vehicleModel vehicleType vehicleMake category subcategory rentalPrice hourlyPrice vehiclePhoto licensePlate additionalVehicles ReturnDuration createdAt')
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(parseInt(limit));
+            .populate('userId', 'username email mobile')
+            .populate('registerId', 'Name Age Address Landmark Pincode City State ContactNo latitude longitude')
+            .populate('rentalId', 'businessName ownerName City State Address Landmark Pincode ContactNo latitude longitude')
+            .select('vehicleModel vehicleType vehicleMake category subcategory rentalPrice hourlyPrice vehiclePhoto licensePlate additionalVehicles ReturnDuration createdAt')
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(parseInt(limit));
 
         // Get total count for pagination
         const totalCount = await RegisteredVehicles.countDocuments({
@@ -1165,27 +1094,27 @@ SearchController.getRentalVehicles = async (req, res) => {
 
         // Format vehicles response including additional vehicles
         const formattedVehicles = [];
-        
+
         for (const vehicle of vehicles) {
             const register = vehicle.registerId || {};
             const rentalInfo = vehicle.rentalId || {};
-            
+
             // Get business name
             const businessName = rentalInfo.businessName || rentalBusiness.businessName || 'N/A';
-            
+
             // Format location
             const city = register.City || rentalInfo.City || rentalBusiness.City || 'N/A';
             const state = register.State || rentalInfo.State || rentalBusiness.State || 'N/A';
             const location = city !== 'N/A' && state !== 'N/A' ? `${city}, ${state}` : city;
-            
+
             // Default rating (can be enhanced with actual rating system)
             const rating = 4.5;
             const reviewCount = 274;
-            
+
             // Format price
             const pricePerDay = vehicle.rentalPrice || 0;
             const formattedPrice = `₹${pricePerDay}/day`;
-            
+
             // Add main vehicle
             formattedVehicles.push({
                 _id: vehicle._id,
@@ -1193,7 +1122,7 @@ SearchController.getRentalVehicles = async (req, res) => {
                 businessName: businessName,
                 providerName: businessName,
                 ownerName: rentalInfo.ownerName || rentalBusiness.ownerName || register.Name || 'N/A',
-                
+
                 // Location Information
                 location: location,
                 City: city,
@@ -1203,7 +1132,7 @@ SearchController.getRentalVehicles = async (req, res) => {
                 Pincode: register.Pincode || rentalInfo.Pincode || rentalBusiness.Pincode || '',
                 latitude: register.latitude || rentalInfo.latitude || rentalBusiness.latitude,
                 longitude: register.longitude || rentalInfo.longitude || rentalBusiness.longitude,
-                
+
                 // Vehicle Information
                 VehicleModel: vehicle.vehicleModel,
                 vehicleModel: vehicle.vehicleModel,
@@ -1212,25 +1141,25 @@ SearchController.getRentalVehicles = async (req, res) => {
                 category: vehicle.category,
                 subcategory: vehicle.subcategory,
                 licensePlate: vehicle.licensePlate,
-                
+
                 // Pricing Information
                 rentalPrice: vehicle.rentalPrice,
                 hourlyPrice: vehicle.hourlyPrice,
                 pricePerDay: formattedPrice,
                 price: pricePerDay,
-                
+
                 // Media
                 VehiclePhoto: vehicle.vehiclePhoto,
                 vehiclePhoto: vehicle.vehiclePhoto,
-                
+
                 // Rating Information
                 rating: rating,
                 reviewCount: reviewCount,
                 reviews: reviewCount,
-                
+
                 // Contact Information
                 ContactNo: register.ContactNo || rentalInfo.ContactNo || rentalBusiness.ContactNo || vehicle.userId?.mobile || 'N/A',
-                
+
                 // Additional Information
                 ReturnDuration: vehicle.ReturnDuration || 'Not specified',
                 isMainVehicle: true,
@@ -1238,7 +1167,7 @@ SearchController.getRentalVehicles = async (req, res) => {
                 hasAdditionalVehicles: vehicle.additionalVehicles && vehicle.additionalVehicles.length > 0,
                 createdAt: vehicle.createdAt
             });
-            
+
             // Add additional vehicles if they exist
             if (vehicle.additionalVehicles && vehicle.additionalVehicles.length > 0) {
                 for (const additionalVehicle of vehicle.additionalVehicles) {
@@ -1248,7 +1177,7 @@ SearchController.getRentalVehicles = async (req, res) => {
                         businessName: businessName,
                         providerName: businessName,
                         ownerName: rentalInfo.ownerName || rentalBusiness.ownerName || register.Name || 'N/A',
-                        
+
                         // Location Information
                         location: location,
                         City: city,
@@ -1258,7 +1187,7 @@ SearchController.getRentalVehicles = async (req, res) => {
                         Pincode: register.Pincode || rentalInfo.Pincode || rentalBusiness.Pincode || '',
                         latitude: register.latitude || rentalInfo.latitude || rentalBusiness.latitude,
                         longitude: register.longitude || rentalInfo.longitude || rentalBusiness.longitude,
-                        
+
                         // Vehicle Information
                         VehicleModel: additionalVehicle.model,
                         vehicleModel: additionalVehicle.model,
@@ -1266,25 +1195,25 @@ SearchController.getRentalVehicles = async (req, res) => {
                         category: additionalVehicle.category,
                         subcategory: additionalVehicle.subcategory,
                         licensePlate: vehicle.licensePlate,
-                        
+
                         // Pricing Information
                         rentalPrice: additionalVehicle.rentalPrice,
                         hourlyPrice: null,
                         pricePerDay: `₹${additionalVehicle.rentalPrice}/day`,
                         price: additionalVehicle.rentalPrice,
-                        
+
                         // Media
                         VehiclePhoto: additionalVehicle.photo || vehicle.vehiclePhoto,
                         vehiclePhoto: additionalVehicle.photo || vehicle.vehiclePhoto,
-                        
+
                         // Rating Information
                         rating: rating,
                         reviewCount: reviewCount,
                         reviews: reviewCount,
-                        
+
                         // Contact Information
                         ContactNo: register.ContactNo || rentalInfo.ContactNo || rentalBusiness.ContactNo || vehicle.userId?.mobile || 'N/A',
-                        
+
                         // Additional Information
                         ReturnDuration: vehicle.ReturnDuration || 'Not specified',
                         isMainVehicle: false,
