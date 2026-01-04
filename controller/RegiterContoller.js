@@ -65,12 +65,12 @@ RegisterController.registerVehicle = async (req, res) => {
       Helper.response("Failed", "Please Provide Vehicle Photo", {}, res, 200);
       return;
     }
-    
+
     if (vehicleRC == undefined || vehicleRC == null || vehicleRC == "") {
       Helper.response("Failed", "Please Provide Vehicle RC Photo", {}, res, 200);
-      return; 
+      return;
     }
-    
+
     var attachment1 = "";
     var attachment2 = "";
     var attachment3 = "";
@@ -137,8 +137,8 @@ RegisterController.registerVehicle = async (req, res) => {
     await newRegister.save();
 
     // Create RegisteredVehicles entry for vehicle details
-    const userIdObjectId = userId ? 
-      (typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId) 
+    const userIdObjectId = userId ?
+      (typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId)
       : userId;
 
     // Generate a unique license plate if not provided (using timestamp + random)
@@ -182,7 +182,7 @@ RegisterController.registerVehicle = async (req, res) => {
 RegisterController.registerRental = async (req, res) => {
   try {
     // Accept both camelCase and capitalized keys from clients
-   
+
     const body = req.body || {};
     const businessName = body.businessName || body.BusinessName;
     const ownerName = body.ownerName || body.OwnerName;
@@ -205,6 +205,7 @@ RegisterController.registerRental = async (req, res) => {
     const licensePlate = body.licensePlate || body.LicensePlate;
     const rentalPrice = body.rentalPrice;
     const hourlyPrice = body.hourlyPrice;
+    const returnDuration = body.returnDuration || body.ReturnDuration || '1 day';
     const gearsProvided = body.gearsProvided || body.GearsProvided || "";
     const category = body.category || body.Category;
     const subcategory = body.subcategory || body.Subcategory;
@@ -216,6 +217,7 @@ RegisterController.registerRental = async (req, res) => {
     const vehicleRegistration = req?.files?.vehicleRegistration === undefined ? "" : req?.files?.vehicleRegistration;
     const licencePhoto = req?.files?.licencePhoto === undefined ? "" : req?.files?.licencePhoto;
     const vehicleRC = req?.files?.vehicleRC === undefined ? "" : req?.files?.vehicleRC;
+    const rentalImage = req?.files?.rentalImage === undefined ? "" : req?.files?.rentalImage;
 
 
     // Validation for RegisterRental model fields
@@ -233,7 +235,7 @@ RegisterController.registerRental = async (req, res) => {
       return;
     }
     const userId = (await Users.findOne({
-      token: req.headers.authorization.split(" ")[1]
+      token: req?.headers?.authorization?.split(" ")[1]
     }).select('_id'))?._id.toString();
 
 
@@ -241,9 +243,9 @@ RegisterController.registerRental = async (req, res) => {
     if (
       !userId ||
       !vehicleType ||
-     
+
       !vehicleModel ||
-    
+
       !licensePlate ||
       !rentalPrice ||
       !category ||
@@ -350,6 +352,13 @@ RegisterController.registerRental = async (req, res) => {
       attachment4 = upload;
     }
 
+    // Upload rental image
+    let rentalImageUrl = "";
+    if (rentalImage) {
+      const upload = await Helper.uploadVehicle(rentalImage);
+      rentalImageUrl = upload;
+    }
+
     // Create RegisterRental entry
     const newRegister = new registerRental({
       businessName: businessName,
@@ -360,6 +369,7 @@ RegisterController.registerRental = async (req, res) => {
       City: city,
       State: state,
       ContactNo: contact,
+      rentalImage: rentalImageUrl,
       AgreedToTerms: (agreed === true || agreed === 1 || agreed === '1') ? true : false,
       latitude: latitude ? parseFloat(latitude) : null,
       longitude: longitude ? parseFloat(longitude) : null
@@ -367,12 +377,13 @@ RegisterController.registerRental = async (req, res) => {
 
     await newRegister.save();
 
-    // Create RegisteredVehicles entry
+    // Create RegisteredVehicles entry for the main vehicle
     // Convert userId to ObjectId if it's a valid string
     const userIdObjectId = mongoose.Types.ObjectId.isValid(userId)
       ? new mongoose.Types.ObjectId(userId)
       : userId;
 
+    // Main vehicle entry
     const vehicleEntry = new RegisteredVehicles({
       rentalId: newRegister._id,
       userId: userIdObjectId,
@@ -390,21 +401,53 @@ RegisterController.registerRental = async (req, res) => {
       gearsProvided: gearsProvided || "",
       rentalPrice: parseFloat(rentalPrice),
       hourlyPrice: hourlyPrice ? parseFloat(hourlyPrice) : null,
+      ReturnDuration: returnDuration,
       category: category,
       subcategory: subcategory,
-      verificationStatus: 'pending', // Set to pending for admin verification
-      additionalVehicles: parsedAdditionalVehicles.map(vehicle => ({
-        category: vehicle.category,
-        subcategory: vehicle.subcategory,
-        model: vehicle.model,
-        rentalPrice: parseFloat(vehicle.rentalPrice),
-        photo: vehicle.photo || null,
-        addedAt: new Date()
-      }))
+      verificationStatus: 'pending' // Set to pending for admin verification
     });
 
     await vehicleEntry.save();
-    Helper.response("Success", "Rental registered successfully. Your documents are pending admin verification.", {}, res, 200);
+
+    // Create separate RegisteredVehicles documents for each additional vehicle
+    // All linked by the same rentalId
+    if (parsedAdditionalVehicles && parsedAdditionalVehicles.length > 0) {
+      for (const additionalVehicle of parsedAdditionalVehicles) {
+        // Generate unique license plate for each additional vehicle
+        const additionalLicensePlate = `RENTAL-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
+
+        const additionalVehicleEntry = new RegisteredVehicles({
+          rentalId: newRegister._id, // Same rentalId to link all vehicles
+          userId: userIdObjectId,
+          vehicleType: additionalVehicle.subcategory, // Use subcategory as vehicle type
+          vehicleMake: additionalVehicle.make || vehicleMake, // Use same make if not provided
+          vehicleModel: additionalVehicle.model,
+          vehicleYear: additionalVehicle.year ? parseInt(additionalVehicle.year) : null,
+          licensePlate: additionalLicensePlate,
+          registrationDocument: attachment2, // Share same business documents
+          vehicleRC: null,
+          insuranceDocument: null,
+          vehiclePhoto: null, // Photo handling for additional vehicles can be added later
+          licencePhoto: attachment3,
+          vehicleRegistration: attachment2,
+          gearsProvided: gearsProvided || "",
+          rentalPrice: parseFloat(additionalVehicle.rentalPrice),
+          hourlyPrice: null,
+          ReturnDuration: returnDuration,
+          category: additionalVehicle.category,
+          subcategory: additionalVehicle.subcategory,
+          verificationStatus: 'pending'
+        });
+
+        await additionalVehicleEntry.save();
+      }
+    }
+
+    Helper.response("Success", "Rental registered successfully. Your documents are pending admin verification.", {
+      rentalId: newRegister._id,
+      mainVehicleId: vehicleEntry._id,
+      totalVehiclesRegistered: 1 + (parsedAdditionalVehicles?.length || 0)
+    }, res, 200);
     return;
 
   } catch (error) {

@@ -8,7 +8,7 @@ const RegisteredVehiclesSchema = new mongoose.Schema(
         vehicleType: { type: String, required: true },
         vehicleMake: { type: String },
         vehicleModel: { type: String, required: true },
-        vehicleYear: { type: Number},
+        vehicleYear: { type: Number },
         licensePlate: { type: String, required: true, unique: true },
         vehicleRC: {
             type: String, // Stores the URL or path to the uploaded vehicle RC
@@ -29,9 +29,9 @@ const RegisteredVehiclesSchema = new mongoose.Schema(
             required: true
         },
         ReturnDuration: {
-        type: String, // Could be a date string, or a specific duration format
-        required: true
-    },
+            type: String, // Could be a date string, or a specific duration format
+            required: true
+        },
         hourlyPrice: {
             type: Number,
             required: false,
@@ -60,36 +60,6 @@ const RegisteredVehiclesSchema = new mongoose.Schema(
             required: true,
             enum: ['Bike', 'Scooty', 'Scooter', 'Car', 'Sedan', 'SUV', 'Hatchback', 'bike', 'scooty', 'scooter', 'car', 'sedan', 'suv', 'hatchback']
         },
-        additionalVehicles: [{
-            category: {
-                type: String,
-                required: true,
-                enum: ['2-wheeler', '4-wheeler', '2-Wheeler', '4-Wheeler']
-            },
-            subcategory: {
-                type: String,
-                required: true,
-                enum: ['Bike', 'Scooty', 'Scooter', 'Car', 'Sedan', 'SUV', 'Hatchback', 'bike', 'scooty', 'scooter', 'car', 'sedan', 'suv', 'hatchback']
-            },
-            model: {
-                type: String,
-                required: true
-            },
-            rentalPrice: {
-                type: Number,
-                required: true,
-                min: 0
-            },
-            photo: {
-                type: String,
-                required: false,
-                default: null
-            },
-            addedAt: {
-                type: Date,
-                default: Date.now
-            }
-        }],
         // Document verification status
         verificationStatus: {
             type: String,

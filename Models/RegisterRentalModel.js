@@ -3,15 +3,17 @@ const mongoose = require('mongoose');
 const registerRentalSchema = new mongoose.Schema({
     businessName: {
         type: String,
-        required: true,
-        unique: true // Assuming each lister name should be unique
+        required: true
     },
     ownerName: {
         type: String,
-        required: true,
-        unique: true // Assuming each lister name should be unique
+        required: true
     },
-
+    rentalImage: {
+        type: String,
+        required: false,
+        default: ""
+    },
     Address: {
         type: String,
         required: true
@@ -60,12 +62,12 @@ const registerRentalSchema = new mongoose.Schema({
     // Location coordinates
     latitude: {
         type: Number,
-        required: false,
+        required: true,
         default: null
     },
     longitude: {
         type: Number,
-        required: false,
+        required: true,
         default: null
     },
 
