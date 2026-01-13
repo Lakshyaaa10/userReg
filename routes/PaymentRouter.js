@@ -37,4 +37,9 @@ paymentRouter.post('/update-status', (req, res, next) => {
     PaymentController.updateBookingStatus(req, res, next);
 });
 
+// Razorpay webhook (IMPORTANT: Must be before other routes)
+paymentRouter.post('/webhook', (req, res, next) => {
+    PaymentController.handleWebhook(req, res, next);
+});
+
 module.exports = paymentRouter;

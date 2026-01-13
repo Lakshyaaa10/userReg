@@ -3,55 +3,101 @@ const Booking = require('../Models/BookingModel');
 const User = require('../Models/userModel');
 const Register = require('../Models/RegisterModel');
 const Availability = require('../Models/AvailabilityModel');
+const Razorpay = require('razorpay');
+const crypto = require('crypto');
 
 const PaymentController = {};
+
+// Initialize Razorpay instance
+const razorpay = new Razorpay({
+    key_id: process.env.RAZORPAY_KEY_ID || 'rzp_test_S2qqGKFsiIoeZL',
+    key_secret: process.env.RAZORPAY_KEY_SECRET || 'xQ4RujNZEugY76UxgfP9fBB2'
+});
 
 // Create Razorpay order
 PaymentController.createOrder = async (req, res) => {
     try {
-        const { amount, currency = 'INR', receipt } = req.body;
+        const { amount, currency = 'INR', receipt, bookingId } = req.body;
+
+        console.log('[Payment] Creating order:', { amount, currency, receipt, bookingId, timestamp: new Date() });
 
         if (!amount) {
+            console.error('[Payment] Order creation failed: Amount is required');
             return Helper.response("Failed", "Amount is required", {}, res, 400);
         }
 
-        // In a real implementation, you would call Razorpay API here
-        // For now, we'll create a mock order
-        const order = {
-            id: `order_${Date.now()}`,
+        // Create Razorpay order with enhanced options
+        const options = {
             amount: amount * 100, // Convert to paise
             currency: currency,
             receipt: receipt || `receipt_${Date.now()}`,
-            status: 'created',
-            created_at: new Date()
+            payment_capture: 1, // Auto capture payment
+            notes: {
+                bookingId: bookingId || 'pending',
+                timestamp: new Date().toISOString()
+            }
         };
+
+        const order = await razorpay.orders.create(options);
+        console.log('[Payment] Order created successfully:', { orderId: order.id, amount: order.amount });
 
         Helper.response("Success", "Order created successfully", { order }, res, 200);
 
     } catch (error) {
-        console.error('Create order error:', error);
+        console.error('[Payment] Create order error:', error);
         Helper.response("Failed", "Internal Server Error", error.message, res, 500);
     }
 };
 
-// Verify payment
+// Verify payment with idempotency
 PaymentController.verifyPayment = async (req, res) => {
     try {
-        const { 
-            orderId, 
-            paymentId, 
-            signature, 
+        const {
+            orderId,
+            paymentId,
+            signature,
             bookingId,
-            amount 
+            amount
         } = req.body;
 
+        console.log('[Payment] Verification attempt:', { orderId, paymentId, bookingId, amount, timestamp: new Date() });
+
         if (!orderId || !paymentId || !signature || !bookingId) {
+            console.error('[Payment] Verification failed: Missing required fields');
             return Helper.response("Failed", "Missing required fields", {}, res, 400);
         }
 
-        // In a real implementation, you would verify the signature with Razorpay
-        // For now, we'll assume the payment is successful
-        const isPaymentValid = true; // This should be actual Razorpay verification
+        // IDEMPOTENCY CHECK: Check if payment already verified
+        const existingBooking = await Booking.findById(bookingId);
+        if (!existingBooking) {
+            console.error('[Payment] Verification failed: Booking not found:', bookingId);
+            return Helper.response("Failed", "Booking not found", {}, res, 404);
+        }
+
+        if (existingBooking.paymentStatus === 'completed' && existingBooking.paymentId === paymentId) {
+            console.log('[Payment] Payment already verified (idempotent):', { bookingId, paymentId });
+            return Helper.response("Success", "Payment already verified", {
+                booking: existingBooking,
+                paymentId,
+                amount,
+                alreadyVerified: true
+            }, res, 200);
+        }
+
+        // Verify signature
+        const text = orderId + "|" + paymentId;
+        const expectedSignature = crypto
+            .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET || 'xQ4RujNZEugY76UxgfP9fBB2')
+            .update(text.toString())
+            .digest("hex");
+
+        const isPaymentValid = expectedSignature === signature;
+
+        console.log('[Payment] Signature verification:', {
+            isValid: isPaymentValid,
+            orderId,
+            paymentId
+        });
 
         if (isPaymentValid) {
             // Update booking status
@@ -61,14 +107,13 @@ PaymentController.verifyPayment = async (req, res) => {
                     status: 'confirmed',
                     paymentId: paymentId,
                     paymentStatus: 'completed',
-                    paymentDate: new Date()
+                    paymentDate: new Date(),
+                    razorpayOrderId: orderId
                 },
                 { new: true }
             );
 
-            if (!booking) {
-                return Helper.response("Failed", "Booking not found", {}, res, 404);
-            }
+            console.log('[Payment] Payment verified and booking updated:', { bookingId, paymentId, status: booking.status });
 
             Helper.response("Success", "Payment verified successfully", {
                 booking,
@@ -76,11 +121,12 @@ PaymentController.verifyPayment = async (req, res) => {
                 amount
             }, res, 200);
         } else {
-            Helper.response("Failed", "Payment verification failed", {}, res, 400);
+            console.error('[Payment] Verification failed: Invalid signature', { orderId, paymentId });
+            Helper.response("Failed", "Payment verification failed - Invalid signature", {}, res, 400);
         }
 
     } catch (error) {
-        console.error('Verify payment error:', error);
+        console.error('[Payment] Verify payment error:', error);
         Helper.response("Failed", "Internal Server Error", error.message, res, 500);
     }
 };
@@ -135,15 +181,14 @@ PaymentController.refundPayment = async (req, res) => {
             return Helper.response("Failed", "Payment not completed", {}, res, 400);
         }
 
-        // In a real implementation, you would call Razorpay refund API
-        // For now, we'll create a mock refund
-        const refund = {
-            id: `rfnd_${Date.now()}`,
+        // Create refund with Razorpay
+        const refund = await razorpay.payments.refund(booking.paymentId, {
             amount: amount * 100, // Convert to paise
-            status: 'processed',
-            reason: reason || 'Customer request',
-            created_at: new Date()
-        };
+            notes: {
+                reason: reason || 'Customer request',
+                bookingId: bookingId
+            }
+        });
 
         // Update booking status
         await Booking.findByIdAndUpdate(bookingId, {
@@ -213,17 +258,17 @@ PaymentController.createOfflineBooking = async (req, res) => {
         const vehicle = await RegisteredVehicles.findById(vehicleId)
             .populate('registerId', 'Name ContactNo')
             .populate('rentalId', 'ownerName ContactNo');
-        
+
         if (!vehicle) {
             return Helper.response("Failed", "Vehicle not found", {}, res, 404);
         }
-        
+
         // Get owner details from registerId or rentalId
         const register = vehicle.registerId || {};
         const rental = vehicle.rentalId || {};
         const ownerName = register.Name || rental.ownerName || 'Unknown Owner';
         const ownerPhone = register.ContactNo || rental.ContactNo || 'N/A';
-        
+
         // Get owner user details from User model
         const owner = await User.findById(vehicle.userId);
         if (!owner) {
@@ -261,7 +306,7 @@ PaymentController.createOfflineBooking = async (req, res) => {
         // Mark dates as unavailable in Availability collection
         const start = new Date(startDate);
         const end = new Date(endDate);
-        
+
         for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
             await Availability.findOneAndUpdate(
                 {
@@ -319,6 +364,89 @@ PaymentController.updateBookingStatus = async (req, res) => {
     } catch (error) {
         console.error('Update booking status error:', error);
         Helper.response("Failed", "Internal Server Error", error.message, res, 500);
+    }
+};
+
+// Webhook handler for Razorpay payment events
+PaymentController.handleWebhook = async (req, res) => {
+    try {
+        const webhookSignature = req.headers['x-razorpay-signature'];
+        const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+
+        console.log('[Webhook] Received payment webhook:', {
+            event: req.body.event,
+            timestamp: new Date()
+        });
+
+        if (!webhookSecret) {
+            console.error('[Webhook] Webhook secret not configured');
+            return res.status(500).json({ error: 'Webhook not configured' });
+        }
+
+        // Verify webhook signature
+        const expectedSignature = crypto
+            .createHmac('sha256', webhookSecret)
+            .update(JSON.stringify(req.body))
+            .digest('hex');
+
+        if (expectedSignature !== webhookSignature) {
+            console.error('[Webhook] Invalid signature');
+            return res.status(400).json({ error: 'Invalid signature' });
+        }
+
+        const event = req.body.event;
+        const payload = req.body.payload;
+
+        console.log('[Webhook] Processing event:', event);
+
+        // Handle payment captured event
+        if (event === 'payment.captured') {
+            const payment = payload.payment.entity;
+            const orderId = payment.order_id;
+            const paymentId = payment.id;
+
+            console.log('[Webhook] Payment captured:', { orderId, paymentId, amount: payment.amount });
+
+            // Find and update booking by order ID
+            const booking = await Booking.findOneAndUpdate(
+                { razorpayOrderId: orderId },
+                {
+                    paymentStatus: 'completed',
+                    status: 'confirmed',
+                    paymentId: paymentId,
+                    paymentDate: new Date()
+                },
+                { new: true }
+            );
+
+            if (booking) {
+                console.log('[Webhook] Booking updated via webhook:', { bookingId: booking._id });
+            } else {
+                console.warn('[Webhook] No booking found for order:', orderId);
+            }
+        }
+
+        // Handle payment failed event
+        if (event === 'payment.failed') {
+            const payment = payload.payment.entity;
+            const orderId = payment.order_id;
+
+            console.log('[Webhook] Payment failed:', { orderId });
+
+            await Booking.findOneAndUpdate(
+                { razorpayOrderId: orderId },
+                {
+                    paymentStatus: 'failed',
+                    status: 'cancelled'
+                }
+            );
+        }
+
+        res.status(200).json({ status: 'ok' });
+
+    } catch (error) {
+        console.error('[Webhook] Error:', error);
+        res.status(500).json({ error: 'Webhook processing failed' });
     }
 };
 
