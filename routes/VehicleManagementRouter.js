@@ -5,6 +5,9 @@ const VehicleManagementController = require('../controller/VehicleManagementCont
 // Get all vehicles for a user
 router.get('/my-vehicles', VehicleManagementController.getMyVehicles);
 
+// Get vehicle activity (with booking status)
+router.get('/my-vehicle-activity', VehicleManagementController.getMyVehicleActivity);
+
 // Get a specific vehicle by ID
 router.get('/vehicle/:vehicleId', VehicleManagementController.getVehicleById);
 

@@ -6,14 +6,131 @@ const Availability = require('../Models/AvailabilityModel');
 
 const VehicleManagementController = {};
 
+// Get My Vehicle Activity
+VehicleManagementController.getMyVehicleActivity = async (req, res) => {
+    try {
+        const { userId, filter } = req.query; // filter: 'all', 'available', 'active', 'completed'
+
+        if (!userId) {
+            return Helper.response("Failed", "Missing userId", {}, res, 400);
+        }
+
+        const mongoose = require('mongoose');
+        const objectIdUserId = typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId;
+
+        // 1. Get all vehicles for the user
+        let vehicles = await RegisteredVehicles.find({ userId: objectIdUserId })
+            .select('vehicleNumber vehicleModel vehicleType vehiclePhoto isAvailable rentalPrice')
+            .sort({ createdAt: -1 });
+
+        // 2. Prepare the result array
+        const activityData = [];
+
+        for (const vehicle of vehicles) {
+            const vehicleData = {
+                vehicleId: vehicle._id,
+                vehicleModel: vehicle.vehicleModel,
+                vehicleNumber: vehicle.vehicleNumber || 'N/A', // Assuming vehicleNumber exists or is part of model
+                vehiclePhoto: vehicle.vehiclePhoto,
+                status: 'Available', // Default
+                bookingDetails: null
+            };
+
+            // 3. Find active/upcoming bookings for this vehicle
+            // We look for bookings that are NOT cancelled or completed/rejected?
+            // "Active" means currently ongoing.
+            // "Completed" filter logic might be different (fetching history), but for the main card view:
+
+            const currentDate = new Date();
+
+            // Find current active booking
+            const activeBooking = await Booking.findOne({
+                vehicleId: vehicle._id,
+                status: { $in: ['confirmed', 'in_progress', 'accepted'] },
+                startDate: { $lte: currentDate },
+                endDate: { $gte: currentDate }
+            }).sort({ startDate: 1 });
+
+            // Find upcoming booking if no active booking
+            const upcomingBooking = !activeBooking ? await Booking.findOne({
+                vehicleId: vehicle._id,
+                status: { $in: ['confirmed', 'in_progress', 'accepted', 'pending'] },
+                startDate: { $gt: currentDate }
+            }).sort({ startDate: 1 }) : null;
+
+            // Find last completed booking (for context if needed)
+            const completedBooking = (!activeBooking && !upcomingBooking) ? await Booking.findOne({
+                vehicleId: vehicle._id,
+                status: 'completed'
+            }).sort({ endDate: -1 }) : null;
+
+
+            if (activeBooking) {
+                vehicleData.status = 'Active';
+                vehicleData.bookingDetails = {
+                    renterName: activeBooking.renterName,
+                    renterPhone: activeBooking.renterPhone,
+                    startDate: activeBooking.startDate,
+                    endDate: activeBooking.endDate,
+                    documents: "Adhar Card, Driver's License" // Hardcoded or dynamic if we have it
+                };
+            } else if (upcomingBooking) {
+                vehicleData.status = 'Booked'; // Or 'Upcoming'
+                vehicleData.bookingDetails = {
+                    renterName: upcomingBooking.renterName,
+                    renterPhone: upcomingBooking.renterPhone,
+                    startDate: upcomingBooking.startDate,
+                    endDate: upcomingBooking.endDate,
+                    documents: "Adhar Card, Driver's License"
+                };
+            } else if (completedBooking && filter === 'completed') {
+                vehicleData.status = 'Completed';
+                vehicleData.bookingDetails = {
+                    renterName: completedBooking.renterName,
+                    renterPhone: completedBooking.renterPhone,
+                    startDate: completedBooking.startDate,
+                    endDate: completedBooking.endDate,
+                    documents: "Adhar Card, Driver's License"
+                };
+            } else if (!vehicle.isAvailable) {
+                vehicleData.status = 'Unavailable';
+            }
+
+            // Apply Filter
+            if (filter === 'all') {
+                activityData.push(vehicleData);
+            } else if (filter === 'available' && vehicleData.status === 'Available') {
+                activityData.push(vehicleData);
+            } else if (filter === 'active' && vehicleData.status === 'Active') {
+                activityData.push(vehicleData);
+            } else if (filter === 'completed' && vehicleData.status === 'Completed') {
+                // For completed filter, we might want to return *bookings* rather than vehicles, 
+                // but based on design it looks like vehicle cards.
+                // If the vehicle was *ever* rented, show it? 
+                // Let's stick to "Current State" for now unless specifically Logic requested history.
+                // The design shows "Rented to..." which implies active/past state.
+                // Let's assume 'completed' tab shows vehicles that *recently finished* a trip?
+                // Or maybe just show all vehicles, but with their last trip info?
+                if (completedBooking) activityData.push(vehicleData);
+            }
+        }
+
+        Helper.response("Success", "Vehicle activity retrieved", activityData, res, 200);
+
+    } catch (error) {
+        console.error('Get vehicle activity error:', error);
+        Helper.response("Failed", "Internal Server Error", error.message, res, 500);
+    }
+};
+
 // Get all vehicles for a specific user
 VehicleManagementController.getMyVehicles = async (req, res) => {
     try {
         const { userId } = req.query;
-        
+
         console.log('Received userId:', userId);
         console.log('Type of userId:', typeof userId);
-        
+
         if (!userId) {
             return Helper.response("Failed", "Missing userId", {}, res, 400);
         }
@@ -73,12 +190,12 @@ VehicleManagementController.getVehicleById = async (req, res) => {
         const mongoose = require('mongoose');
         const objectIdUserId = typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId;
 
-        const vehicle = await RegisteredVehicles.findOne({ 
-            _id: vehicleId, 
-            userId: objectIdUserId 
+        const vehicle = await RegisteredVehicles.findOne({
+            _id: vehicleId,
+            userId: objectIdUserId
         })
-        .populate('registerId', 'Name Age Address Landmark Pincode City State ContactNo')
-        .populate('rentalId', 'businessName ownerName Address Landmark Pincode City State ContactNo');
+            .populate('registerId', 'Name Age Address Landmark Pincode City State ContactNo')
+            .populate('rentalId', 'businessName ownerName Address Landmark Pincode City State ContactNo');
 
         if (!vehicle) {
             return Helper.response("Failed", "Vehicle not found", {}, res, 404);
@@ -112,7 +229,7 @@ VehicleManagementController.updateVehicle = async (req, res) => {
         const { vehicleId } = req.params;
         // Get userId from body (for FormData) or query (for JSON)
         const userId = req.body?.userId || req.query?.userId;
-        
+
         // Create updateData from body, excluding userId
         const updateData = {};
         Object.keys(req.body).forEach(key => {
@@ -136,18 +253,18 @@ VehicleManagementController.updateVehicle = async (req, res) => {
         // Check if vehicle exists and belongs to user
         const mongoose = require('mongoose');
         const objectIdUserId = typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId;
-        
-        const existingVehicle = await RegisteredVehicles.findOne({ 
-            _id: vehicleId, 
-            userId: objectIdUserId 
+
+        const existingVehicle = await RegisteredVehicles.findOne({
+            _id: vehicleId,
+            userId: objectIdUserId
         })
-        .populate('registerId')
-        .populate('rentalId');
+            .populate('registerId')
+            .populate('rentalId');
 
         if (!existingVehicle) {
             return Helper.response("Failed", "Vehicle not found or unauthorized", {}, res, 404);
         }
-        
+
         // Handle file uploads if any files are provided
         if (req.files) {
             // Upload vehicle photo if provided
@@ -214,7 +331,7 @@ VehicleManagementController.updateVehicle = async (req, res) => {
                 }
             }
         }
-        
+
         // If personal details need to be updated, update Register model
         if (updateData.address || updateData.city || updateData.state || updateData.pincode || updateData.contactNo) {
             if (existingVehicle.registerId) {
@@ -232,7 +349,7 @@ VehicleManagementController.updateVehicle = async (req, res) => {
                 );
             }
         }
-        
+
         // Remove personal detail fields from vehicle update data
         delete updateData.address;
         delete updateData.city;
@@ -282,10 +399,10 @@ VehicleManagementController.deleteVehicle = async (req, res) => {
         // Check if vehicle exists and belongs to user
         const mongoose = require('mongoose');
         const objectIdUserId = typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId;
-        
-        const existingVehicle = await RegisteredVehicles.findOne({ 
-            _id: vehicleId, 
-            userId: objectIdUserId 
+
+        const existingVehicle = await RegisteredVehicles.findOne({
+            _id: vehicleId,
+            userId: objectIdUserId
         });
 
         if (!existingVehicle) {
@@ -335,10 +452,10 @@ VehicleManagementController.toggleAvailability = async (req, res) => {
         // Check if vehicle exists and belongs to user
         const mongoose = require('mongoose');
         const objectIdUserId = typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId;
-        
-        const existingVehicle = await RegisteredVehicles.findOne({ 
-            _id: vehicleId, 
-            userId: objectIdUserId 
+
+        const existingVehicle = await RegisteredVehicles.findOne({
+            _id: vehicleId,
+            userId: objectIdUserId
         });
 
         if (!existingVehicle) {
@@ -348,7 +465,7 @@ VehicleManagementController.toggleAvailability = async (req, res) => {
         // Update vehicle availability
         const updatedVehicle = await RegisteredVehicles.findByIdAndUpdate(
             vehicleId,
-            { 
+            {
                 isAvailable: isAvailable,
                 updatedAt: new Date()
             },
@@ -376,13 +493,13 @@ VehicleManagementController.getVehicleStats = async (req, res) => {
         // Check if vehicle exists and belongs to user
         const mongoose = require('mongoose');
         const objectIdUserId = typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId;
-        
-        const existingVehicle = await RegisteredVehicles.findOne({ 
-            _id: vehicleId, 
-            userId: objectIdUserId 
+
+        const existingVehicle = await RegisteredVehicles.findOne({
+            _id: vehicleId,
+            userId: objectIdUserId
         })
-        .populate('registerId')
-        .populate('rentalId');
+            .populate('registerId')
+            .populate('rentalId');
 
         if (!existingVehicle) {
             return Helper.response("Failed", "Vehicle not found or unauthorized", {}, res, 404);
@@ -390,17 +507,17 @@ VehicleManagementController.getVehicleStats = async (req, res) => {
 
         // Get booking statistics
         const totalBookings = await Booking.countDocuments({ vehicleId: vehicleId });
-        const completedBookings = await Booking.countDocuments({ 
-            vehicleId: vehicleId, 
-            status: 'completed' 
+        const completedBookings = await Booking.countDocuments({
+            vehicleId: vehicleId,
+            status: 'completed'
         });
-        const pendingBookings = await Booking.countDocuments({ 
-            vehicleId: vehicleId, 
-            status: 'pending' 
+        const pendingBookings = await Booking.countDocuments({
+            vehicleId: vehicleId,
+            status: 'pending'
         });
-        const activeBookings = await Booking.countDocuments({ 
-            vehicleId: vehicleId, 
-            status: { $in: ['accepted', 'in_progress'] } 
+        const activeBookings = await Booking.countDocuments({
+            vehicleId: vehicleId,
+            status: { $in: ['accepted', 'in_progress'] }
         });
 
         // Calculate total earnings
@@ -472,7 +589,7 @@ VehicleManagementController.getAllVehiclesDebug = async (req, res) => {
 VehicleManagementController.fixNullUserIdVehicles = async (req, res) => {
     try {
         const { userId, vehicleId } = req.body;
-        
+
         if (!userId) {
             return Helper.response("Failed", "Missing userId", {}, res, 400);
         }
@@ -494,14 +611,14 @@ VehicleManagementController.fixNullUserIdVehicles = async (req, res) => {
         // Update vehicles with the provided userId
         const mongoose = require('mongoose');
         const objectIdUserId = typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId;
-        
+
         const updateResult = await RegisteredVehicles.updateMany(
             query,
-            { 
-                $set: { 
+            {
+                $set: {
                     userId: objectIdUserId,
                     updatedAt: new Date()
-                } 
+                }
             }
         );
 
