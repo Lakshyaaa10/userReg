@@ -1,9 +1,9 @@
 const express = require("express");
 var routes = express.Router()
 
-var AuthRoutes = require( "./AuthRouter");
+var AuthRoutes = require("./AuthRouter");
 const RegisterRouter = require("./RegisterRouter");
-const vehicleRoutes= require('./vehicleRouter')
+const vehicleRoutes = require('./vehicleRouter')
 const BookingRouter = require('./BookingRouter');
 const PaymentRouter = require('./PaymentRouter');
 const NotificationRouter = require('./NotificationRouter');
@@ -11,25 +11,27 @@ const AdminRouter = require('./AdminRouter');
 const EarningsRouter = require('./EarningsRouter');
 const RTORouter = require('./RTORouter');
 const SearchRouter = require('./SearchRouter');
+const SearchRouter = require('./SearchRouter');
 const VehicleManagementRouter = require('./VehicleManagementRouter');
+const userMiddleware = require('../middleware/userMiddleware');
 
 // Authentication routes
-routes.use("/",AuthRoutes)
+routes.use("/", AuthRoutes)
 
 // Registration routes
-routes.use("/reg",RegisterRouter)
+routes.use("/reg", RegisterRouter)
 
 // Vehicle routes
-routes.use('/veh',vehicleRoutes)
+routes.use('/veh', vehicleRoutes)
 
 // Booking routes
-routes.use('/bookings', BookingRouter)
+routes.use('/bookings', userMiddleware, BookingRouter)
 
 // Payment routes
-routes.use('/payments', PaymentRouter)
+routes.use('/payments', userMiddleware, PaymentRouter)
 
 // Notification routes
-routes.use('/notifications', NotificationRouter)
+routes.use('/notifications', userMiddleware, NotificationRouter)
 
 // Admin routes
 routes.use('/admin', AdminRouter)
@@ -48,7 +50,7 @@ routes.use('/veh', VehicleManagementRouter)
 
 routes.use("*", (req, res, next) => {
   console.log(`Unhandled route: ${req.originalUrl}`);
-    res.send("Not Found");
-  });
+  res.send("Not Found");
+});
 
-  module.exports = routes;
+module.exports = routes;
