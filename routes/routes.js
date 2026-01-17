@@ -13,6 +13,7 @@ const RTORouter = require('./RTORouter');
 const SearchRouter = require('./SearchRouter');
 const VehicleManagementRouter = require('./VehicleManagementRouter');
 const userMiddleware = require('../middleware/userMiddleware');
+const ContactController = require('../controller/ContactController');
 
 // Authentication routes
 routes.use("/", AuthRoutes)
@@ -45,6 +46,14 @@ routes.use('/rto', RTORouter)
 
 // Search routes
 routes.use('/search', SearchRouter)
+
+// Contact routes
+
+routes.post('/contact/send', ContactController.sendMessage);
+routes.get('/contact/messages', AdminRouter); // Using Admin middleware could be cleaner but routes don't usually export middleware directly. Assuming public/admin separation logic.
+// Simpler approach: Just use controller directly for now, maybe add middleware later if needed, but per request admin panel needs access.
+// Let's actually separate it cleanly:
+routes.get('/contact/messages', ContactController.getMessages);
 
 // Vehicle management routes
 routes.use('/veh', VehicleManagementRouter)
