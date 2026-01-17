@@ -11,7 +11,6 @@ const AdminRouter = require('./AdminRouter');
 const EarningsRouter = require('./EarningsRouter');
 const RTORouter = require('./RTORouter');
 const SearchRouter = require('./SearchRouter');
-const SearchRouter = require('./SearchRouter');
 const VehicleManagementRouter = require('./VehicleManagementRouter');
 const userMiddleware = require('../middleware/userMiddleware');
 
