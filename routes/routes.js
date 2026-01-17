@@ -27,7 +27,9 @@ routes.use('/veh', vehicleRoutes)
 routes.use('/bookings', userMiddleware, BookingRouter)
 
 // Payment routes
-routes.use('/payments', userMiddleware, PaymentRouter)
+const PaymentController = require('../controller/PaymentController');
+routes.post('/payments/webhook', PaymentController.handleWebhook); // Public webhook
+routes.use('/payments', userMiddleware, PaymentRouter);
 
 // Notification routes
 routes.use('/notifications', userMiddleware, NotificationRouter)
