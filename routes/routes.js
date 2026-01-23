@@ -29,8 +29,14 @@ routes.use('/bookings', userMiddleware, BookingRouter)
 
 // Payment routes
 const PaymentController = require('../controller/PaymentController');
+
 routes.post('/payments/webhook', PaymentController.handleWebhook); // Public webhook
 routes.use('/payments', userMiddleware, PaymentRouter);
+
+// Payout routes (RazorpayX)
+const PayoutRouter = require('./PayoutRouter');
+routes.post('/payouts/webhook', require('../controller/PayoutController').handleWebhook); // Public Payout Webhook
+routes.use('/payouts', userMiddleware, PayoutRouter);
 
 // Notification routes
 routes.use('/notifications', userMiddleware, NotificationRouter)
@@ -56,7 +62,12 @@ routes.get('/contact/messages', AdminRouter); // Using Admin middleware could be
 routes.get('/contact/messages', ContactController.getMessages);
 
 // Vehicle management routes
+// Vehicle management routes
 routes.use('/veh', VehicleManagementRouter)
+
+// Review routes
+const ReviewRouter = require('./ReviewRouter');
+routes.use('/reviews', ReviewRouter);
 
 routes.use("*", (req, res, next) => {
   console.log(`Unhandled route: ${req.originalUrl}`);

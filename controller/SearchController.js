@@ -731,21 +731,31 @@ SearchController.getOwnerDetails = async (req, res) => {
             return Helper.response("Failed", "Missing vehicleId", {}, res, 400);
         }
 
-        // Use RegisteredVehicles as primary model and get owner details from Register
         const registeredVehicle = await RegisteredVehicles.findOne({
             _id: vehicleId,
             verificationStatus: 'verified'
         })
             .populate('userId', 'username email mobile')
-            .populate('registerId', 'Name Age Address Landmark Pincode City State ContactNo latitude longitude')
-            .populate('rentalId', 'City State Address Landmark Pincode latitude longitude ContactNo');
+            .populate('registerId', 'Name Age Address Landmark Pincode City State ContactNo latitude longitude userId')
+            .populate('rentalId', 'City State Address Landmark Pincode latitude longitude ContactNo userId');
 
         let owner = null;
         if (registeredVehicle) {
             const register = registeredVehicle.registerId || {};
             const rental = registeredVehicle.rentalId || {};
+
+            // Extract User ID safely
+            let ownerUserId = null;
+            if (registeredVehicle.userId) {
+                ownerUserId = registeredVehicle.userId._id ? registeredVehicle.userId._id : registeredVehicle.userId;
+            }
+            if (!ownerUserId && register.userId) ownerUserId = register.userId;
+            if (!ownerUserId && rental.userId) ownerUserId = rental.userId;
+
+            console.log('Detected Owner User ID:', ownerUserId);
+
             owner = {
-                Name: register.Name || registeredVehicle.userId?.username || 'N/A',
+                Name: register.Name || registeredVehicle.userId?.username || rental.ownerName || 'Zugo Host',
                 Age: register.Age || null,
                 ContactNo: register.ContactNo || rental.ContactNo || registeredVehicle.userId?.mobile || 'N/A',
                 VehicleModel: registeredVehicle.vehicleModel, // Backward compatibility
@@ -759,7 +769,8 @@ SearchController.getOwnerDetails = async (req, res) => {
                 Pincode: register.Pincode || rental.Pincode || '',
                 latitude: registeredVehicle.latitude || register.latitude || rental.latitude,
                 longitude: registeredVehicle.longitude || register.longitude || rental.longitude,
-                source: 'registered'
+                source: 'registered',
+                userId: ownerUserId // Include userId for linking to host profile
             };
         }
 

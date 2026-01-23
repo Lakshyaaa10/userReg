@@ -74,7 +74,7 @@ PaymentController.verifyPayment = async (req, res) => {
             return Helper.response("Failed", "Booking not found", {}, res, 404);
         }
 
-        if (existingBooking.paymentStatus === 'completed' && existingBooking.paymentId === paymentId) {
+        if (existingBooking.paymentStatus === 'paid' && existingBooking.paymentId === paymentId) {
             console.log('[Payment] Payment already verified (idempotent):', { bookingId, paymentId });
             return Helper.response("Success", "Payment already verified", {
                 booking: existingBooking,
@@ -106,7 +106,7 @@ PaymentController.verifyPayment = async (req, res) => {
                 {
                     status: 'confirmed',
                     paymentId: paymentId,
-                    paymentStatus: 'completed',
+                    paymentStatus: 'paid',
                     paymentDate: new Date(),
                     razorpayOrderId: orderId
                 },
@@ -177,7 +177,7 @@ PaymentController.refundPayment = async (req, res) => {
             return Helper.response("Failed", "Booking not found", {}, res, 404);
         }
 
-        if (booking.paymentStatus !== 'completed') {
+        if (booking.paymentStatus !== 'paid') {
             return Helper.response("Failed", "Payment not completed", {}, res, 400);
         }
 
@@ -411,7 +411,7 @@ PaymentController.handleWebhook = async (req, res) => {
             const booking = await Booking.findOneAndUpdate(
                 { razorpayOrderId: orderId },
                 {
-                    paymentStatus: 'completed',
+                    paymentStatus: 'paid',
                     status: 'confirmed',
                     paymentId: paymentId,
                     paymentDate: new Date()
