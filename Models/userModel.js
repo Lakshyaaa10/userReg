@@ -3,40 +3,40 @@ const { type } = require('express/lib/response')
 const mongoose = require("mongoose");
 
 const Users = new mongoose.Schema({
-    mobile:{
-        type:Number,
-        default:null,
-        unique:true,
-        sparse:true
+    mobile: {
+        type: Number,
+        default: null,
+        unique: true,
+        sparse: true
     },
-    createdAt:{
-        type:Date,
-        default:Date.now
+    createdAt: {
+        type: Date,
+        default: Date.now
     },
-    token:{
-        type:String,
-        default:''
-        
+    token: {
+        type: String,
+        default: ''
+
     },
-    password:{
-        type:String,
-        default:""
+    password: {
+        type: String,
+        default: ""
     },
-    googleId:{
-        type:String,
-        default:"",
-        unique:true,
-        sparse:true
+    googleId: {
+        type: String,
+        default: "",
+        unique: true,
+        sparse: true
     },
-    email:{
-        type:String,
-        default:""
+    email: {
+        type: String,
+        default: ""
     },
-    username:{
-        type:String,
-        default:"",
-        unique:true,
-        sparse:true
+    username: {
+        type: String,
+        default: "",
+        unique: true,
+        sparse: true
     },
     // User profile fields
     fullName: {
@@ -78,7 +78,27 @@ const Users = new mongoose.Schema({
         type: String,
         enum: ['renter', 'owner', 'both'],
         default: 'renter'
+    },
+    // Payout Information (For Owners)
+    payoutMethod: {
+        type: {
+            type: String,
+            enum: ['bank_account', 'vpa'], // vpa = UPI ID
+            default: 'bank_account'
+        },
+        accountNumber: { type: String },
+        ifsc: { type: String }, // For bank_account
+        vpa: { type: String },   // For UPI
+        beneficiaryName: { type: String }
+    },
+    razorpayFundAccountId: {
+        type: String, // ID from RazorpayX Fund Account
+        default: ""
+    },
+    razorpayContactId: {
+        type: String, // ID from RazorpayX Contact
+        default: ""
     }
 })
-const userModel= mongoose.models.users || mongoose.model("users",Users)
+const userModel = mongoose.models.users || mongoose.model("users", Users)
 module.exports = userModel

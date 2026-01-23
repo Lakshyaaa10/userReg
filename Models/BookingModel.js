@@ -19,7 +19,7 @@ const bookingSchema = new mongoose.Schema({
         type: String,
         required: true
     },
-    
+
     // Owner Information
     ownerId: {
         type: mongoose.Schema.Types.ObjectId,
@@ -34,7 +34,7 @@ const bookingSchema = new mongoose.Schema({
         type: String,
         required: true
     },
-    
+
     // Vehicle Information
     vehicleId: {
         type: mongoose.Schema.Types.ObjectId,
@@ -53,7 +53,7 @@ const bookingSchema = new mongoose.Schema({
         type: String,
         required: true
     },
-    
+
     // Booking Details
     startDate: {
         type: Date,
@@ -75,14 +75,14 @@ const bookingSchema = new mongoose.Schema({
         type: Number,
         required: true
     },
-    
+
     // Booking Status
     status: {
         type: String,
-        enum: ['pending', 'accepted', 'rejected', 'cancelled', 'completed', 'in_progress'],
+        enum: ['pending', 'accepted', 'rejected', 'cancelled', 'completed', 'in_progress', 'confirmed'],
         default: 'pending'
     },
-    
+
     // Payment Information
     paymentStatus: {
         type: String,
@@ -97,7 +97,7 @@ const bookingSchema = new mongoose.Schema({
         type: String,
         default: ''
     },
-    
+
     // Location Information
     pickupLocation: {
         type: String,
@@ -107,7 +107,7 @@ const bookingSchema = new mongoose.Schema({
         type: String,
         required: true
     },
-    
+
     // Additional Information
     specialRequests: {
         type: String,
@@ -117,7 +117,7 @@ const bookingSchema = new mongoose.Schema({
         type: String,
         default: ''
     },
-    
+
     // Timestamps
     createdAt: {
         type: Date,

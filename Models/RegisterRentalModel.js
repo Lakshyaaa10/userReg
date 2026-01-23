@@ -59,6 +59,12 @@ const registerRentalSchema = new mongoose.Schema({
         default: Date.now
     },
 
+    userId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'users',
+        required: false // Optional for backward compatibility, but should be populated for new entries
+    },
+
     // Location coordinates
     latitude: {
         type: Number,

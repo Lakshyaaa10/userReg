@@ -34,11 +34,11 @@ BookingController.createBooking = async (req, res) => {
         const vehicle = await RegisteredVehicles.findById(vehicleId)
             .populate('registerId', 'Name ContactNo')
             .populate('rentalId', 'ownerName ContactNo');
-        
+
         if (!vehicle) {
             return Helper.response("Failed", "Vehicle not found", {}, res, 404);
         }
-        
+
         // Get owner details from registerId or rentalId
         const register = vehicle.registerId || {};
         const rental = vehicle.rentalId || {};
@@ -48,14 +48,14 @@ BookingController.createBooking = async (req, res) => {
         // Check availability
         const start = new Date(startDate);
         const end = new Date(endDate);
-        
+
         for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
             const availability = await Availability.findOne({
                 vehicleId: vehicleId,
                 date: d,
                 isAvailable: false
             });
-            
+
             if (availability) {
                 return Helper.response("Failed", `Vehicle not available on ${d.toDateString()}`, {}, res, 400);
             }
@@ -143,7 +143,7 @@ BookingController.createBooking = async (req, res) => {
 BookingController.getUserBookings = async (req, res) => {
     try {
         const { userId, userType } = req.query; // userType: 'renter' or 'owner'
-        
+
         if (!userId || !userType) {
             return Helper.response("Failed", "Missing userId or userType", {}, res, 400);
         }
@@ -172,7 +172,7 @@ BookingController.getUserBookings = async (req, res) => {
 BookingController.getRenterBookings = async (req, res) => {
     try {
         const { renterId } = req.params;
-        
+
         if (!renterId) {
             return Helper.response("Failed", "Missing renterId", {}, res, 400);
         }
@@ -194,7 +194,7 @@ BookingController.getRenterBookings = async (req, res) => {
 BookingController.getOwnerBookings = async (req, res) => {
     try {
         const { ownerId } = req.params;
-        
+
         if (!ownerId) {
             return Helper.response("Failed", "Missing ownerId", {}, res, 400);
         }
@@ -215,7 +215,7 @@ BookingController.getOwnerBookings = async (req, res) => {
 // Update booking status (accept/reject)
 BookingController.updateBookingStatus = async (req, res) => {
     try {
-        const { bookingId, status, ownerId } = req.body;
+        const { bookingId, status, ownerId, paymentMethod, paymentStatus } = req.body;
 
         if (!bookingId || !status || !ownerId) {
             return Helper.response("Failed", "Missing required fields", {}, res, 400);
@@ -233,13 +233,26 @@ BookingController.updateBookingStatus = async (req, res) => {
 
         // Update booking status
         booking.status = status;
-        if (status === 'accepted') {
-            booking.acceptedAt = new Date();
-            
-            // Mark dates as unavailable when booking is accepted
+
+        // Update payment method if provided
+        if (paymentMethod) {
+            booking.paymentMethod = paymentMethod;
+        }
+
+        // Update payment status if provided
+        if (paymentStatus) {
+            if (['pending', 'paid', 'failed', 'refunded'].includes(paymentStatus)) {
+                booking.paymentStatus = paymentStatus;
+            }
+        }
+
+        if (status === 'accepted' || status === 'confirmed') {
+            if (status === 'accepted') booking.acceptedAt = new Date();
+
+            // Mark dates as unavailable when booking is accepted/confirmed
             const start = new Date(booking.startDate);
             const end = new Date(booking.endDate);
-            
+
             for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
                 await Availability.findOneAndUpdate(
                     {
@@ -260,7 +273,7 @@ BookingController.updateBookingStatus = async (req, res) => {
             // Mark dates as available again when booking is rejected/cancelled
             const start = new Date(booking.startDate);
             const end = new Date(booking.endDate);
-            
+
             for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
                 await Availability.findOneAndUpdate(
                     {
@@ -353,6 +366,23 @@ BookingController.completeBooking = async (req, res) => {
         });
         await notification.save();
 
+        // ---------------------------------------------------------
+        // AUTOMATED PAYOUT TRIGGER (INSTANT) - DISABLED (No RazorpayX)
+        // ---------------------------------------------------------
+        /*
+        try {
+            const PayoutController = require('./PayoutController');
+            // We don't await this if we want it to run in background, 
+            // BUT for "Instant" feel and error tracking, let's await it or catch error simply.
+            await PayoutController.processPayoutForBooking(bookingId);
+            console.log(`[Booking] Instant payout triggered for ${bookingId}`);
+        } catch (payoutError) {
+            console.error(`[Booking] Auto-payout failed for ${bookingId}:`, payoutError.message);
+            // We don't fail the completion request, just log it. Admin can retry manually.
+        }
+        */
+        // ---------------------------------------------------------
+
         Helper.response("Success", "Booking completed successfully", { booking, earnings }, res, 200);
 
     } catch (error) {
@@ -365,7 +395,7 @@ BookingController.completeBooking = async (req, res) => {
 BookingController.cancelBooking = async (req, res) => {
     try {
         const { bookingId, reason } = req.body;
-        
+
         if (!bookingId) {
             return Helper.response("Failed", "Missing bookingId", {}, res, 400);
         }
@@ -408,7 +438,7 @@ BookingController.cancelBooking = async (req, res) => {
 BookingController.getBookingById = async (req, res) => {
     try {
         const { bookingId } = req.params;
-        
+
         if (!bookingId) {
             return Helper.response("Failed", "Missing bookingId", {}, res, 400);
         }

@@ -372,7 +372,8 @@ RegisterController.registerRental = async (req, res) => {
       rentalImage: rentalImageUrl,
       AgreedToTerms: (agreed === true || agreed === 1 || agreed === '1') ? true : false,
       latitude: latitude ? parseFloat(latitude) : null,
-      longitude: longitude ? parseFloat(longitude) : null
+      longitude: longitude ? parseFloat(longitude) : null,
+      userId: userId // Save the linked User ID
     });
 
     await newRegister.save();
