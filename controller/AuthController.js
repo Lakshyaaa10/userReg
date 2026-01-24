@@ -4,17 +4,25 @@ const Helper = require("../Helper/Helper");
 const jwt = require("jsonwebtoken");
 exports.createUser = async (req, res) => {
   try {
-    const { mobile, password, email, username } = req.body;
+    const { mobile, password, email, username, referralCode, Name, fullName } = req.body;
+
+    // Allow Name or fullName to be used as username if username is not explicitly provided
+    const finalUsername = username || Name || fullName;
+    const finalFullName = fullName || Name;
 
     // For regular signup, password is required (OAuth users don't use this endpoint)
-    if (!mobile || !password || !email || !username) {
-      return res
-        .status(400)
-        .send("Mobile number, email, username, and password are required");
+    if (!mobile || !password || !email || !finalUsername) {
+      return Helper.response(
+        "Failed",
+        "Mobile number, email, username, and password are required",
+        {},
+        res,
+        400
+      );
     }
 
     const existingUser = await userModel.findOne({
-      $or: [{ mobile }, { email }, { username }],
+      $or: [{ mobile }, { email }, { username: finalUsername }],
     });
 
     if (existingUser) {
@@ -27,14 +35,61 @@ exports.createUser = async (req, res) => {
       );
     }
 
+    // Generate unique referral code for the new user
+    // Format: Username (first 4 chars) + Random 4 alphanumeric
+    const safeUsername = finalUsername || "USER";
+    const baseName = safeUsername.substring(0, 4).toUpperCase();
+    const uniqueRef = baseName + Math.random().toString(36).substr(2, 4).toUpperCase();
+
+    let walletPoints = 0;
+    let referredBy = null;
+
+    // Handle Referral Logic
+    if (referralCode) {
+      const referrer = await userModel.findOne({ referralCode });
+      if (referrer) {
+        // Credit referrer (50 points)
+        referrer.walletPoints = (referrer.walletPoints || 0) + 50;
+        referrer.referralHistory.push({
+          userId: null, // We'll update this with real ID after save if needed, but for now we haven't saved newUser yet.
+          // Actually simpler: we can't push userId yet.
+          // Let's just add points now and maybe add history later or just trust the count.
+          // Better: Save newUser first then update referrer.
+        });
+
+        // We need to save referrer changes. 
+        // To properly link, we should do this after newUser is created.
+        referredBy = referrer._id;
+        walletPoints = 20; // Signup bonus for using code
+      }
+    }
+
     const newUser = new userModel({
       mobile,
       password,
       email,
-      username,
+      username: finalUsername,
+      fullName: finalFullName,
+      referralCode: uniqueRef,
+      walletPoints,
+      referredBy
     });
 
     const savedUser = await newUser.save();
+
+    // If there was a referrer, update their history now that we have savedUser._id
+    if (referredBy) {
+      await userModel.findByIdAndUpdate(referredBy, {
+        $inc: { walletPoints: 50 },
+        $push: {
+          referralHistory: {
+            userId: savedUser._id,
+            pointsEarned: 50,
+            date: new Date()
+          }
+        }
+      });
+    }
 
     return Helper.response(
       "Success",
@@ -50,17 +105,39 @@ exports.createUser = async (req, res) => {
 };
 exports.Login = async (req, res) => {
   try {
-    const { mobile, password } = req.body;
-    if (!mobile || !password) {
+    const { identifier, mobile, password } = req.body;
+
+    // Support both 'identifier' (new) and 'mobile' (legacy) fields
+    const loginId = identifier || mobile;
+
+    if (!loginId || !password) {
       return Helper.response(
         "Failed",
-        "Please provide Username and Password",
+        "Please provide Email/Phone and Password",
         {},
         res,
         200
       );
     }
-    const user = await userModel.findOne({ mobile: mobile });
+
+    let query = {};
+
+    // Check if loginId is an email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (emailRegex.test(loginId)) {
+      query = { email: loginId };
+    } else {
+      // Assume it's a mobile number
+      // Clean the number if needed, but for now assuming clean input or matching DB format
+      // DB mobile is Number, so we parse it.
+      const mobileNumber = Number(loginId);
+      if (isNaN(mobileNumber)) {
+        return Helper.response("Failed", "Invalid Email or Phone Number format", {}, res, 200);
+      }
+      query = { mobile: mobileNumber };
+    }
+
+    const user = await userModel.findOne(query);
 
     if (user && user.password === password) {
       let token = jwt.sign({ id: user._id }, process.env.SECRET_KEY, {
@@ -77,16 +154,18 @@ exports.Login = async (req, res) => {
             mobile: user.mobile,
             token: token,
             base_url: process.env.BASE_URL,
+            userType: user.userType,
           },
           res,
           200
         );
       });
     } else {
-      Helper.response("Failed", "No User Found", {}, res, 200);
+      Helper.response("Failed", "Invalid Credentials", {}, res, 200);
     }
   } catch (err) {
     console.log(err);
+    Helper.response("Failed", "An error occurred during login", {}, res, 200);
   }
 };
 exports.Logout = async (req, res) => {
@@ -115,7 +194,7 @@ exports.getUserDetails = async (req, res) => {
   try {
     const token = req.headers["authorization"];
     const string = token.split(" ")[1];
-    const user = await userModel.findOne({ token: string });  
+    const user = await userModel.findOne({ token: string });
     if (user) {
       Helper.response("Success", "User Found", user, res, 200);
     }
@@ -148,7 +227,7 @@ exports.googleAuth = async (req, res) => {
       const response = await fetch(
         `https://www.googleapis.com/oauth2/v2/userinfo?access_token=${accessToken}`
       );
-      
+
       if (!response.ok) {
         return Helper.response(
           "Failed",
@@ -210,7 +289,7 @@ exports.googleAuth = async (req, res) => {
       } else {
         // Check if user exists with this email
         const existingUser = await userModel.findOne({ email: googleUser.email });
-        
+
         if (existingUser) {
           // Link Google account to existing user
           existingUser.googleId = googleId;

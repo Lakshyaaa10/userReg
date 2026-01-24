@@ -76,7 +76,7 @@ const Users = new mongoose.Schema({
     // User type
     userType: {
         type: String,
-        enum: ['renter', 'owner', 'both'],
+        enum: ['renter', 'owner', 'both', 'rental_owner'],
         default: 'renter'
     },
     // Payout Information (For Owners)
@@ -98,7 +98,36 @@ const Users = new mongoose.Schema({
     razorpayContactId: {
         type: String, // ID from RazorpayX Contact
         default: ""
-    }
+    },
+    // Referral System
+    referralCode: {
+        type: String,
+        unique: true,
+        sparse: true
+    },
+    referredBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'users',
+        default: null
+    },
+    walletPoints: {
+        type: Number,
+        default: 0
+    },
+    referralHistory: [{
+        userId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'users'
+        },
+        pointsEarned: {
+            type: Number,
+            required: true
+        },
+        date: {
+            type: Date,
+            default: Date.now
+        }
+    }]
 })
 const userModel = mongoose.models.users || mongoose.model("users", Users)
 module.exports = userModel
