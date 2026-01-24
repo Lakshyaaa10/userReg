@@ -107,6 +107,7 @@ PaymentController.verifyPayment = async (req, res) => {
                     status: 'confirmed',
                     paymentId: paymentId,
                     paymentStatus: 'paid',
+                    paymentMethod: 'Online',
                     paymentDate: new Date(),
                     razorpayOrderId: orderId
                 },
@@ -414,6 +415,7 @@ PaymentController.handleWebhook = async (req, res) => {
                     paymentStatus: 'paid',
                     status: 'confirmed',
                     paymentId: paymentId,
+                    paymentMethod: 'Online',
                     paymentDate: new Date()
                 },
                 { new: true }

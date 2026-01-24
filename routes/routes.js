@@ -14,15 +14,19 @@ const SearchRouter = require('./SearchRouter');
 const VehicleManagementRouter = require('./VehicleManagementRouter');
 const userMiddleware = require('../middleware/userMiddleware');
 const ContactController = require('../controller/ContactController');
+const ReferralController = require('../controller/ReferralController');
+
+// Referral routes
+routes.get('/user/referral', userMiddleware, ReferralController.getReferralStats);
 
 // Authentication routes
 routes.use("/", AuthRoutes)
 
 // Registration routes
-routes.use("/reg", RegisterRouter)
+routes.use("/reg", userMiddleware, RegisterRouter)
 
 // Vehicle routes
-routes.use('/veh', vehicleRoutes)
+routes.use('/veh', userMiddleware, vehicleRoutes)
 
 // Booking routes
 routes.use('/bookings', userMiddleware, BookingRouter)
@@ -45,7 +49,7 @@ routes.use('/notifications', userMiddleware, NotificationRouter)
 routes.use('/admin', AdminRouter)
 
 // Earnings routes
-routes.use('/earnings', EarningsRouter)
+routes.use('/earnings', userMiddleware, EarningsRouter)
 
 // RTO assistance routes
 routes.use('/rto', RTORouter)

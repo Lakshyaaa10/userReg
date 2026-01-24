@@ -11,8 +11,8 @@ adminRouter.post('/register', (req, res, next) => {
     AdminController.adminRegister(req, res, next);
 });
 adminRouter.post('/test', (req, res, next) => {
-   console.log("Admin test route hit");
-   res.status(200).json({ message: "Admin test route working!", timestamp: new Date().toISOString() });
+    console.log("Admin test route hit");
+    res.status(200).json({ message: "Admin test route working!", timestamp: new Date().toISOString() });
 });
 // Admin login
 adminRouter.post('/login', (req, res, next) => {
@@ -83,6 +83,11 @@ adminRouter.get('/recent-activities', adminMiddleware, (req, res, next) => {
 // Get revenue analytics
 adminRouter.get('/revenue-analytics', adminMiddleware, (req, res, next) => {
     AdminController.getRevenueAnalytics(req, res, next);
+});
+
+// Get owners revenue analytics
+adminRouter.get('/owner-revenue-analytics', adminMiddleware, (req, res, next) => {
+    AdminController.getOwnersRevenueAnalytics(req, res, next);
 });
 
 // Get admin profile

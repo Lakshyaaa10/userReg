@@ -101,7 +101,7 @@ EarningsController.getEarningsSummary = async (req, res) => {
         const summary = await Earnings.aggregate([
             {
                 $match: {
-                    ownerId: require('mongoose').Types.ObjectId(ownerId),
+                    ownerId: new (require('mongoose').Types.ObjectId)(ownerId),
                     createdAt: dateFilter
                 }
             },
@@ -168,7 +168,7 @@ EarningsController.getTopPerformingVehicles = async (req, res) => {
 
         const topVehicles = await Earnings.aggregate([
             {
-                $match: { ownerId: require('mongoose').Types.ObjectId(ownerId) }
+                $match: { ownerId: new (require('mongoose').Types.ObjectId)(ownerId) }
             },
             {
                 $group: {
@@ -220,11 +220,11 @@ EarningsController.getTopPerformingVehicles = async (req, res) => {
 // Get earnings analytics
 EarningsController.getEarningsAnalytics = async (req, res) => {
     try {
-        const { ownerId, startDate, endDate } = req.query;
+        // SECURITY: Use authenticated user's ID
+        const ownerId = req.user.id;
+        const { startDate, endDate } = req.query;
 
-        if (!ownerId) {
-            return Helper.response("Failed", "Missing ownerId", {}, res, 400);
-        }
+        console.log("Fetching analytics for owner:", ownerId);
 
         let dateFilter = {};
         if (startDate && endDate) {
@@ -234,13 +234,13 @@ EarningsController.getEarningsAnalytics = async (req, res) => {
             };
         }
 
+        const matchStage = {
+            ownerId: new (require('mongoose').Types.ObjectId)(ownerId),
+            ...(Object.keys(dateFilter).length > 0 && { createdAt: dateFilter })
+        };
+
         const analytics = await Earnings.aggregate([
-            {
-                $match: {
-                    ownerId: require('mongoose').Types.ObjectId(ownerId),
-                    ...(Object.keys(dateFilter).length > 0 && { createdAt: dateFilter })
-                }
-            },
+            { $match: matchStage },
             {
                 $group: {
                     _id: null,
@@ -255,14 +255,24 @@ EarningsController.getEarningsAnalytics = async (req, res) => {
             }
         ]);
 
+        // Online vs Offline Split
+        // Assuming 'paymentMethod' field exists and 'cash' implies offline, anything else 'online'
+        // Or if you explicitly have 'online'/'offline' status.
+        // Let's assume generic logic: "Cash" -> Offline, "Card/UPI/NetBanking" -> Online
+        const paymentSplit = await Earnings.aggregate([
+            { $match: matchStage },
+            {
+                $group: {
+                    _id: "$paymentMethod", // Group directly by stored paymentMethod
+                    totalAmount: { $sum: "$netAmount" },
+                    count: { $sum: 1 }
+                }
+            }
+        ]);
+
         // Get daily earnings for the period
         const dailyEarnings = await Earnings.aggregate([
-            {
-                $match: {
-                    ownerId: require('mongoose').Types.ObjectId(ownerId),
-                    ...(Object.keys(dateFilter).length > 0 && { createdAt: dateFilter })
-                }
-            },
+            { $match: matchStage },
             {
                 $group: {
                     _id: {
@@ -289,6 +299,7 @@ EarningsController.getEarningsAnalytics = async (req, res) => {
                 minEarning: 0,
                 maxEarning: 0
             },
+            paymentSplit,
             dailyEarnings
         }, res, 200);
 

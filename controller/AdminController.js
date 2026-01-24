@@ -12,7 +12,7 @@ AdminController.adminRegister = async (req, res) => {
     try {
         console.log('Admin register controller called');
         console.log('Request body:', req.body);
-        
+
         const {
             username,
             email,
@@ -100,13 +100,13 @@ AdminController.adminRegister = async (req, res) => {
 
     } catch (error) {
         console.error('Admin registration error:', error);
-        
+
         // Handle duplicate key errors
         if (error.code === 11000) {
             const field = Object.keys(error.keyPattern)[0];
             return Helper.response("Failed", `${field} already exists`, {}, res, 409);
         }
-        
+
         Helper.response("Failed", "Internal Server Error", error.message, res, 500);
     }
 };
@@ -127,12 +127,12 @@ AdminController.adminLogin = async (req, res) => {
 
         // Generate JWT token
         const token = jwt.sign(
-            { 
-                id: admin._id, 
+            {
+                id: admin._id,
                 username: admin.username,
-                role: admin.role 
-            }, 
-            process.env.SECRET_KEY, 
+                role: admin.role
+            },
+            process.env.SECRET_KEY,
             { expiresIn: "50m" }
         );
 
@@ -162,7 +162,7 @@ AdminController.adminLogin = async (req, res) => {
 AdminController.adminLogout = async (req, res) => {
     try {
         const token = req.headers["authorization"];
-        
+
         if (!token) {
             return Helper.response("Failed", "Authorization token is required", {}, res, 400);
         }
@@ -176,7 +176,7 @@ AdminController.adminLogout = async (req, res) => {
 
         // Find admin by token and clear it
         const admin = await Admin.findOne({ token: tokenString });
-        
+
         if (admin) {
             admin.token = '';
             await admin.save();
@@ -239,7 +239,7 @@ AdminController.verifyDriverLicense = async (req, res) => {
         license.verificationStatus = status;
         license.verifiedBy = adminId;
         license.verifiedAt = new Date();
-        
+
         if (status === 'rejected' && rejectionReason) {
             license.rejectionReason = rejectionReason;
         }
@@ -356,7 +356,7 @@ AdminController.getDashboardStats = async (req, res) => {
         const totalRegisteredVehicles = await RegisteredVehicles.countDocuments();
         const totalBookings = await Booking.countDocuments();
         const pendingVerifications = await RegisteredVehicles.countDocuments({ verificationStatus: 'pending' });
-        
+
         // Booking status counts
         const pendingBookings = await Booking.countDocuments({ status: 'pending' });
         const activeBookings = await Booking.countDocuments({ status: { $in: ['accepted', 'in_progress'] } });
@@ -578,7 +578,7 @@ AdminController.getAllVehicles = async (req, res) => {
 // Get pending vehicle verifications
 AdminController.getPendingVehicleVerifications = async (req, res) => {
     try {
-        
+
         const { page = 1, limit = 20, vehicleType } = req.query;
         const skip = (page - 1) * limit;
         const RegisteredVehicles = require('../Models/RegisteredVehicles');
@@ -637,7 +637,7 @@ AdminController.verifyVehicle = async (req, res) => {
 
         // Try to find in Register model first
         vehicle = await Register.findById(vehicleId);
-        
+
         // If not found, try RegisteredVehicles model
         if (!vehicle) {
             vehicle = await RegisteredVehicles.findById(vehicleId);
@@ -661,7 +661,7 @@ AdminController.verifyVehicle = async (req, res) => {
         vehicle.verificationStatus = status;
         vehicle.verifiedBy = adminId;
         vehicle.verifiedAt = new Date();
-        
+
         if (status === 'rejected' && rejectionReason) {
             vehicle.rejectionReason = rejectionReason;
         } else if (status === 'verified') {
@@ -683,7 +683,7 @@ AdminController.verifyVehicle = async (req, res) => {
             await notification.save();
         }
 
-        Helper.response("Success", `Vehicle ${status} successfully`, { 
+        Helper.response("Success", `Vehicle ${status} successfully`, {
             vehicle,
             vehicleType: isRegisteredVehicle ? 'registered' : 'standard'
         }, res, 200);
@@ -797,6 +797,76 @@ AdminController.getRevenueAnalytics = async (req, res) => {
         Helper.response("Failed", "Internal Server Error", error.message, res, 500);
     }
 };
+
+// Get earnings analytics by owner
+AdminController.getOwnersRevenueAnalytics = async (req, res) => {
+    try {
+        const { limit = 100, sortBy = 'totalRevenue', order = 'desc' } = req.query;
+        const Earnings = require('../Models/EarningsModel');
+
+        const sortStage = {};
+        sortStage[sortBy] = order === 'desc' ? -1 : 1;
+
+        const ownerAnalytics = await Earnings.aggregate([
+            {
+                $match: { paymentStatus: 'paid' }
+            },
+            {
+                $group: {
+                    _id: '$ownerId',
+                    totalRevenue: { $sum: '$grossAmount' },
+                    totalPlatformFee: { $sum: '$platformFee' },
+                    totalNetAmount: { $sum: '$netAmount' },
+                    totalTrips: { $sum: 1 },
+                    lastEarningDate: { $max: '$paymentDate' }
+                }
+            },
+            {
+                $lookup: {
+                    from: 'registers', // Assuming Register collection name
+                    localField: '_id',
+                    foreignField: '_id',
+                    as: 'ownerDetails'
+                }
+            },
+            {
+                $unwind: {
+                    path: '$ownerDetails',
+                    preserveNullAndEmptyArrays: true
+                }
+            },
+            {
+                $project: {
+                    _id: 1,
+                    ownerName: { $ifNull: ['$ownerDetails.Name', 'Unknown'] },
+                    ownerEmail: { $ifNull: ['$ownerDetails.email', 'N/A'] }, // Check if email is in Register
+                    ownerContact: { $ifNull: ['$ownerDetails.ContactNo', 'N/A'] },
+                    totalRevenue: 1,
+                    totalPlatformFee: 1,
+                    totalNetAmount: 1,
+                    totalTrips: 1,
+                    lastEarningDate: 1
+                }
+            },
+            {
+                $sort: sortStage
+            },
+            {
+                $limit: parseInt(limit)
+            }
+        ]);
+
+        Helper.response("Success", "Owners revenue analytics retrieved successfully", {
+            ownerAnalytics
+        }, res, 200);
+
+    } catch (error) {
+        console.error('Get owners revenue analytics error:', error);
+        Helper.response("Failed", "Internal Server Error", error.message, res, 500);
+    }
+};
+
+module.exports = AdminController;
 
 // Get admin profile
 AdminController.getAdminProfile = async (req, res) => {

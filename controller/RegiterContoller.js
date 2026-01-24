@@ -31,9 +31,8 @@ RegisterController.registerVehicle = async (req, res) => {
     } = req.body;
 
     // Extract userId from token
-    const userId = (await Users.findOne({
-      token: req?.headers?.authorization?.split(" ")[1]
-    }).select('_id'))?._id.toString();
+    // Extract userId from token (middleware)
+    const userId = req.user.id;
 
     if (!userId) {
       Helper.response("Failed", "Unauthorized: User not found", {}, res, 200);
@@ -180,6 +179,11 @@ RegisterController.registerVehicle = async (req, res) => {
     // Link vehicle to register entry by storing registerId in vehicle (we'll add this field if needed)
     // For now, we can use userId to link them
 
+    // Update User Role to 'rental_owner'
+    if (userIdObjectId) {
+      await Users.findByIdAndUpdate(userIdObjectId, { userType: 'rental_owner' });
+    }
+
     Helper.response("Success", "Vehicle registered successfully. Your documents are pending admin verification.", {
       registerId: newRegister._id,
       vehicleId: newVehicle._id
@@ -247,9 +251,7 @@ RegisterController.registerRental = async (req, res) => {
       Helper.response("Failed", "Please Provide all rental business details (businessName, ownerName, address, pincode, city, state, contact, agreed)", {}, res, 200);
       return;
     }
-    const userId = (await Users.findOne({
-      token: req?.headers?.authorization?.split(" ")[1]
-    }).select('_id'))?._id.toString();
+    const userId = req.user.id;
 
 
     // Validation for RegisteredVehicles model required fields
@@ -457,6 +459,11 @@ RegisterController.registerRental = async (req, res) => {
 
         await additionalVehicleEntry.save();
       }
+    }
+
+    // Update User Role to 'rental_owner'
+    if (userIdObjectId) {
+      await Users.findByIdAndUpdate(userIdObjectId, { userType: 'rental_owner' });
     }
 
     Helper.response("Success", "Rental registered successfully. Your documents are pending admin verification.", {
