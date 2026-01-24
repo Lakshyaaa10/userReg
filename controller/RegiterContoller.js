@@ -27,8 +27,19 @@ RegisterController.registerVehicle = async (req, res) => {
       subcategory,
       latitude,
       longitude,
-      userId,
+      securityDeposit, // Added securityDeposit
     } = req.body;
+
+    // Extract userId from token
+    const userId = (await Users.findOne({
+      token: req?.headers?.authorization?.split(" ")[1]
+    }).select('_id'))?._id.toString();
+
+    if (!userId) {
+      Helper.response("Failed", "Unauthorized: User not found", {}, res, 200);
+      return;
+    }
+
     const vehiclePhoto =
       req?.files?.vehiclePhoto === undefined ? "" : req?.files?.vehiclePhoto;
     const addressPhoto =
@@ -155,6 +166,7 @@ RegisterController.registerVehicle = async (req, res) => {
       vehiclePhoto: attachment1,
       rentalPrice: parseFloat(rentalPrice),
       hourlyPrice: hourlyPrice ? parseFloat(hourlyPrice) : null,
+      securityDeposit: securityDeposit ? parseFloat(securityDeposit) : 0, // Save securityDeposit
       category: category || autoCategory,
       subcategory: subcategory || autoSubcategory,
       verificationStatus: 'pending', // Set to pending for admin verification
@@ -205,6 +217,7 @@ RegisterController.registerRental = async (req, res) => {
     const licensePlate = body.licensePlate || body.LicensePlate;
     const rentalPrice = body.rentalPrice;
     const hourlyPrice = body.hourlyPrice;
+    const securityDeposit = body.securityDeposit; // Added securityDeposit for rental
     const returnDuration = body.returnDuration || body.ReturnDuration || '1 day';
     const gearsProvided = body.gearsProvided || body.GearsProvided || "";
     const category = body.category || body.Category;
@@ -402,6 +415,7 @@ RegisterController.registerRental = async (req, res) => {
       gearsProvided: gearsProvided || "",
       rentalPrice: parseFloat(rentalPrice),
       hourlyPrice: hourlyPrice ? parseFloat(hourlyPrice) : null,
+      securityDeposit: securityDeposit ? parseFloat(securityDeposit) : 0, // Save securityDeposit
       ReturnDuration: returnDuration,
       category: category,
       subcategory: subcategory,
@@ -434,6 +448,7 @@ RegisterController.registerRental = async (req, res) => {
           gearsProvided: gearsProvided || "",
           rentalPrice: parseFloat(additionalVehicle.rentalPrice),
           hourlyPrice: null,
+          securityDeposit: additionalVehicle.securityDeposit ? parseFloat(additionalVehicle.securityDeposit) : 0, // Save for additional vehicles
           ReturnDuration: returnDuration,
           category: additionalVehicle.category,
           subcategory: additionalVehicle.subcategory,
