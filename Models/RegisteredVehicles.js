@@ -38,6 +38,12 @@ const RegisteredVehiclesSchema = new mongoose.Schema(
             min: 0,
             default: null
         },
+        securityDeposit: {
+            type: Number,
+            required: false,
+            min: 0,
+            default: 0
+        },
         isAvailable: {
             type: Boolean,
             default: true

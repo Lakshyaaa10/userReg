@@ -341,7 +341,8 @@ SearchController.getVehicleDetails = async (req, res) => {
                 longitude: registeredVehicle.longitude || register.longitude || rental.longitude,
                 licensePlate: registeredVehicle.licensePlate,
                 source: 'registered',
-                verificationStatus: registeredVehicle.verificationStatus
+                verificationStatus: registeredVehicle.verificationStatus,
+                securityDeposit: registeredVehicle.securityDeposit,
             };
         }
 
@@ -928,13 +929,15 @@ SearchController.checkAvailability = async (req, res) => {
 
 SearchController.getRentals = async (req, res) => {
     try {
-        const { latitude, longitude, radius = 50, page = 1, limit = 20 } = req.query;
+        const { latitude, longitude, radius = 50, page = 1, limit = 20, city, excludeId } = req.query;
 
-        if (!latitude || !longitude) {
-            return Helper.response("Failed", "Missing latitude or longitude", {}, res, 400);
+        // Validation - Require either filtering by Location OR City
+        if ((!latitude || !longitude) && !city) {
+            return Helper.response("Failed", "Missing location data (latitude/longitude OR city)", {}, res, 400);
         }
-        const userLat = parseFloat(latitude);
-        const userLon = parseFloat(longitude);
+
+        const userLat = latitude ? parseFloat(latitude) : null;
+        const userLon = longitude ? parseFloat(longitude) : null;
         const radiusInKm = parseFloat(radius);
         const skip = (page - 1) * limit;
 
@@ -943,11 +946,22 @@ SearchController.getRentals = async (req, res) => {
         // Given complexity of populations, we'll fetch vehicles and deduplicate in JS for now
         // A more efficient way for large datasets would be an aggregation pipeline
 
-        const vehicles = await RegisteredVehicles.find({
+        let query = {
             verificationStatus: 'verified',
             rentalId: { $ne: null }, // Only vehicles linked to rental businesses
             isAvailable: true
-        })
+        };
+
+        // If filtering by excludeId (exclude current rental)
+        if (excludeId) {
+            // Note: We can't easily filter by rentalId._id here because rentalId is a ref in the schema
+            // We will filter it out in the loop below
+        }
+
+        // If filtering by City, we might want to pre-filter if possible, but City is in populated fields
+        // So we handle it in the loop or use a more complex query if we had denormalized data
+
+        const vehicles = await RegisteredVehicles.find(query)
             .populate('registerId', 'Name City State Address Landmark Pincode ContactNo latitude longitude')
             .populate('rentalId', 'businessName ownerName City State Address Landmark Pincode ContactNo latitude longitude rentalImage')
             .sort({ createdAt: -1 });
@@ -961,6 +975,9 @@ SearchController.getRentals = async (req, res) => {
             // Handle rentalId being populated or string
             const rentalIdObj = vehicle.rentalId;
             const rentalIdStr = rentalIdObj._id ? rentalIdObj._id.toString() : rentalIdObj.toString();
+
+            // Exclude specific rental ID if requested
+            if (excludeId && rentalIdStr === excludeId) continue;
 
             // Skip if already processed
             if (rentalMap.has(rentalIdStr)) {
@@ -978,21 +995,38 @@ SearchController.getRentals = async (req, res) => {
             const register = vehicle.registerId || {};
             const rentalInfo = rentalIdObj; // It's populated
 
-            // Get location
-            const vehicleLat = register.latitude || rentalInfo.latitude;
-            const vehicleLon = register.longitude || rentalInfo.longitude;
+            // Get business details
+            const businessName = rentalInfo.businessName || rentalInfo.ownerName || register.Name || 'N/A';
+            const rentalCity = register.City || rentalInfo.City || 'N/A';
+            const rentalState = register.State || rentalInfo.State || 'N/A';
+            const location = rentalCity !== 'N/A' && rentalState !== 'N/A' ? `${rentalCity}, ${rentalState}` : rentalCity;
 
-            if (!vehicleLat || !vehicleLon) continue;
+            // Location filtering logic
+            let distance = null;
+            let includeRental = false;
 
-            const distance = calculateDistance(userLat, userLon, vehicleLat, vehicleLon);
+            // Strategy 1: Location based (if lat/long provided)
+            if (userLat && userLon) {
+                const vehicleLat = register.latitude || rentalInfo.latitude;
+                const vehicleLon = register.longitude || rentalInfo.longitude;
 
-            if (distance <= radiusInKm) {
-                // Get business name type stuff
-                const businessName = rentalInfo.businessName || rentalInfo.ownerName || register.Name || 'N/A';
-                const city = register.City || rentalInfo.City || 'N/A';
-                const state = register.State || rentalInfo.State || 'N/A';
-                const location = city !== 'N/A' && state !== 'N/A' ? `${city}, ${state}` : city;
+                if (vehicleLat && vehicleLon) {
+                    distance = calculateDistance(userLat, userLon, vehicleLat, vehicleLon);
+                    if (distance <= radiusInKm) {
+                        includeRental = true;
+                    }
+                }
+            }
+            // Strategy 2: City based (fallback or explicit)
+            else if (city) {
+                // simple Case-insensitive match
+                if (rentalCity.toLowerCase() === city.toLowerCase()) {
+                    includeRental = true;
+                    distance = 0; // Unknown distance but in same city
+                }
+            }
 
+            if (includeRental) {
                 // Create rental entry
                 rentalMap.set(rentalIdStr, {
                     _id: rentalIdStr, // Using rentalId as the main ID for the card
@@ -1000,14 +1034,14 @@ SearchController.getRentals = async (req, res) => {
                     businessName: businessName,
                     ownerName: rentalInfo.ownerName || register.Name || 'N/A',
                     location: location,
-                    City: city,
-                    State: state,
+                    City: rentalCity,
+                    State: rentalState,
                     Address: register.Address || rentalInfo.Address || 'N/A',
 
                     // Location
-                    latitude: vehicleLat,
-                    longitude: vehicleLon,
-                    distance: parseFloat(distance.toFixed(2)),
+                    latitude: register.latitude || rentalInfo.latitude,
+                    longitude: register.longitude || rentalInfo.longitude,
+                    distance: distance !== null ? parseFloat(distance.toFixed(2)) : null,
 
                     // Display Info
                     vehicleCount: 1, // Start with 1
