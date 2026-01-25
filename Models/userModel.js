@@ -5,7 +5,6 @@ const mongoose = require("mongoose");
 const Users = new mongoose.Schema({
     mobile: {
         type: Number,
-        default: null,
         unique: true,
         sparse: true
     },
@@ -15,8 +14,6 @@ const Users = new mongoose.Schema({
     },
     token: {
         type: String,
-        default: ''
-
     },
     password: {
         type: String,
@@ -24,7 +21,6 @@ const Users = new mongoose.Schema({
     },
     googleId: {
         type: String,
-        default: "",
         unique: true,
         sparse: true
     },
@@ -34,7 +30,6 @@ const Users = new mongoose.Schema({
     },
     username: {
         type: String,
-        default: "",
         unique: true,
         sparse: true
     },
@@ -73,7 +68,7 @@ const Users = new mongoose.Schema({
         type: String,
         default: ""
     },
-    // User type
+    // User typef
     userType: {
         type: String,
         enum: ['renter', 'owner', 'both', 'rental_owner'],
