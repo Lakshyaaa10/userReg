@@ -33,7 +33,7 @@ SearchController.searchVehicles = async (req, res) => {
             maxPrice,
             latitude,
             longitude,
-            radius = 50, // Default radius in kilometers
+            radius = 50000, // Default radius in meters
             page = 1,
             limit = 20
         } = req.query;
@@ -250,10 +250,11 @@ SearchController.searchVehicles = async (req, res) => {
         }
 
         // Calculate distance for each vehicle if user location is provided
+        // Calculate distance for each vehicle if user location is provided
         if (latitude && longitude) {
             const userLat = parseFloat(latitude);
             const userLon = parseFloat(longitude);
-            const radiusInKm = parseFloat(radius);
+            const radiusInKm = parseFloat(radius) / 1000;
 
             availableVehicles = availableVehicles.map(vehicle => {
                 const vehicleLat = vehicle.latitude;
@@ -449,7 +450,7 @@ SearchController.getVehiclesByCategory = async (req, res) => {
             maxPrice,
             latitude,
             longitude,
-            radius = 50,
+            radius = 50000, // Default 50km in meters
             page = 1,
             limit = 20
         } = req.query;
@@ -624,7 +625,7 @@ SearchController.getVehiclesByCategory = async (req, res) => {
         if (latitude && longitude) {
             const userLat = parseFloat(latitude);
             const userLon = parseFloat(longitude);
-            const radiusInKm = parseFloat(radius);
+            const radiusInKm = parseFloat(radius) / 1000;
 
             vehicles = vehicles.map(vehicle => {
                 const vehicleLat = vehicle.latitude;
@@ -929,7 +930,7 @@ SearchController.checkAvailability = async (req, res) => {
 
 SearchController.getRentals = async (req, res) => {
     try {
-        const { latitude, longitude, radius = 50, page = 1, limit = 20, city, excludeId } = req.query;
+        const { latitude, longitude, radius = 50000, page = 1, limit = 20, city, excludeId } = req.query;
 
         // Validation - Require either filtering by Location OR City
         if ((!latitude || !longitude) && !city) {
@@ -938,7 +939,7 @@ SearchController.getRentals = async (req, res) => {
 
         const userLat = latitude ? parseFloat(latitude) : null;
         const userLon = longitude ? parseFloat(longitude) : null;
-        const radiusInKm = parseFloat(radius);
+        const radiusInKm = parseFloat(radius) / 1000;
         const skip = (page - 1) * limit;
 
         // Find all verified vehicles from RegisteredVehicles with rentalId (rental businesses)
