@@ -126,25 +126,39 @@ RegisterController.registerVehicle = async (req, res) => {
       autoSubcategory = subcategory || 'Sedan';
     }
 
-    // Create Register entry for personal details
-    const newRegister = new Register({
-      Name: name,
-      Age: age,
-      Address: address,
-      Landmark: landmark,
-      Pincode: pincode,
-      City: city,
-      State: state,
-      ContactNo: contact,
-      AddressProof: attachment2,
-      PollutionCertificate: attachment4,
-      latitude: parseFloat(latitude),
-      longitude: parseFloat(longitude),
-      userId: userId,
-      AgreedToTerms: agreed == 1 ? true : false,
-    });
+    // Check if user has a registered rental business
+    const rentalProfile = await registerRental.findOne({ userId: userId });
 
-    await newRegister.save();
+    let registerId = null;
+    let rentalId = null;
+
+    if (rentalProfile) {
+      console.log("User has a rental profile:", rentalProfile._id);
+      rentalId = rentalProfile._id;
+    } else {
+      // Create Register entry for personal details only if no rental profile exists
+      // Or if we want to allow mixed use (both individual and rental), but user request implies "vehicles should go in rentals only"
+
+      const newRegister = new Register({
+        Name: name,
+        Age: age,
+        Address: address,
+        Landmark: landmark,
+        Pincode: pincode,
+        City: city,
+        State: state,
+        ContactNo: contact,
+        AddressProof: attachment2,
+        PollutionCertificate: attachment4,
+        latitude: parseFloat(latitude),
+        longitude: parseFloat(longitude),
+        userId: userId,
+        AgreedToTerms: agreed == 1 ? true : false,
+      });
+
+      await newRegister.save();
+      registerId = newRegister._id;
+    }
 
     // Create RegisteredVehicles entry for vehicle details
     const userIdObjectId = userId ?
@@ -156,7 +170,8 @@ RegisterController.registerVehicle = async (req, res) => {
 
     const newVehicle = new RegisteredVehicles({
       userId: userIdObjectId,
-      registerId: newRegister._id, // Link to Register entry for personal details
+      registerId: registerId, // Will be null if rentalId is set
+      rentalId: rentalId,     // Will be null if registerId is set
       vehicleType: vehicleType,
       vehicleModel: vehicleModel,
       licensePlate: licensePlate,
@@ -185,7 +200,8 @@ RegisterController.registerVehicle = async (req, res) => {
     }
 
     Helper.response("Success", "Vehicle registered successfully. Your documents are pending admin verification.", {
-      registerId: newRegister._id,
+      registerId: registerId,
+      rentalId: rentalId,
       vehicleId: newVehicle._id
     }, res, 200);
     return;
