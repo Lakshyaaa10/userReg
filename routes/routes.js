@@ -3,6 +3,7 @@ var routes = express.Router()
 
 var AuthRoutes = require("./AuthRouter");
 const RegisterRouter = require("./RegisterRouter");
+const UserRouter = require("./UserRouter");
 const vehicleRoutes = require('./vehicleRouter')
 const BookingRouter = require('./BookingRouter');
 const PaymentRouter = require('./PaymentRouter');
@@ -21,6 +22,9 @@ routes.get('/user/referral', userMiddleware, ReferralController.getReferralStats
 
 // Authentication routes
 routes.use("/", AuthRoutes)
+
+// User routes (rental profile, etc.)
+routes.use("/api/user", UserRouter)
 
 // Registration routes
 routes.use("/reg", userMiddleware, RegisterRouter)

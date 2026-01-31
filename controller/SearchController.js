@@ -452,13 +452,37 @@ SearchController.getVehiclesByCategory = async (req, res) => {
             longitude,
             radius = 50000, // Default 50km in meters
             page = 1,
-            limit = 20
+            limit = 20,
+            startDate,
+            endDate
         } = req.query;
 
         const skip = (page - 1) * limit;
 
         // Use RegisteredVehicles as primary model for vehicle listings
         const registeredVehiclesQuery = { verificationStatus: 'verified' };
+
+        // Date Availability Filtering
+        let unavailableVehicleIds = [];
+        if (startDate && endDate) {
+            const start = new Date(startDate);
+            const end = new Date(endDate);
+
+            // Validate dates
+            if (!isNaN(start) && !isNaN(end) && start <= end) {
+                // Find all unavailability records strictly within the range
+                const unavailableRecords = await Availability.find({
+                    date: { $gte: start, $lte: end },
+                    isAvailable: false
+                }).select('vehicleId');
+
+                if (unavailableRecords.length > 0) {
+                    unavailableVehicleIds = unavailableRecords.map(r => r.vehicleId);
+                    // Exclude these vehicles from the main query
+                    registeredVehiclesQuery._id = { $nin: unavailableVehicleIds };
+                }
+            }
+        }
 
         // Category filter (2-wheeler or 4-wheeler)
         if (category && category !== 'all' && category !== 'All') {
@@ -515,7 +539,7 @@ SearchController.getVehiclesByCategory = async (req, res) => {
             .select('userId registerId vehicleModel vehicleType category subcategory rentalPrice hourlyPrice vehiclePhoto licensePlate latitude longitude additionalVehicles')
             .populate('userId', 'username email mobile')
             .populate('registerId', 'Name Age Address Landmark Pincode City State ContactNo latitude longitude')
-            .populate('rentalId', 'City State Address Landmark Pincode latitude longitude ContactNo')
+            .populate('rentalId', 'City State Address Landmark Pincode latitude longitude ContactNo businessName ownerName')
             .sort({ createdAt: -1 });
 
         console.log(`Found ${allRegisteredVehicles.length} registered vehicles for category: ${category}`);
@@ -567,12 +591,23 @@ SearchController.getVehiclesByCategory = async (req, res) => {
                 longitude: vehicle.longitude || register.longitude || rental.longitude,
                 licensePlate: vehicle.licensePlate,
                 isMainVehicle: true,
-                source: 'registered'
+                source: 'registered',
+                businessName: rental.businessName || '',
+                ownerName: rental.ownerName || '',
+                rentalId: rental._id || null,
+                userId: vehicle.userId?._id || vehicle.userId || null
             });
 
             // Add additional vehicles if any
             if (vehicle.additionalVehicles && vehicle.additionalVehicles.length > 0) {
                 for (const additionalVehicle of vehicle.additionalVehicles) {
+                    // Check availability for additional vehicle
+                    if (unavailableVehicleIds.length > 0 &&
+                        additionalVehicle._id &&
+                        unavailableVehicleIds.some(id => id.toString() === additionalVehicle._id.toString())) {
+                        continue;
+                    }
+
                     allVehicles.push({
                         _id: vehicle._id,
                         Name: register.Name || vehicle.userId?.username || 'N/A',
@@ -595,7 +630,11 @@ SearchController.getVehiclesByCategory = async (req, res) => {
                         longitude: vehicle.longitude || register.longitude || rental.longitude,
                         isMainVehicle: false,
                         additionalVehicleId: additionalVehicle._id,
-                        source: 'registered'
+                        source: 'registered',
+                        businessName: rental.businessName || '',
+                        ownerName: rental.ownerName || '',
+                        rentalId: rental._id || null,
+                        userId: vehicle.userId?._id || vehicle.userId || null
                     });
                 }
             }
