@@ -13,9 +13,13 @@ const cashfree = new Cashfree(
 );
 
 
+
 const PaymentController = {};
 
 PaymentController.createOrder = async (req, res) => {
+    console.log('[Cashfree] APP_ID:', process.env.CASHFREE_APP_ID ? 'SET ✓' : 'MISSING ✗');
+console.log('[Cashfree] SECRET:', process.env.CASHFREE_SECRET_KEY ? 'SET ✓' : 'MISSING ✗');
+console.log('[Cashfree] ENV:', process.env.CASHFREE_ENV || 'SANDBOX (default)');
     try {
         const {
             amount, currency = 'INR', bookingId,
