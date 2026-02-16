@@ -10,7 +10,7 @@ const PaymentController = {};
 const cashfree = new Cashfree();
 cashfree.XClientId = process.env.CASHFREE_APP_ID;
 cashfree.XClientSecret = process.env.CASHFREE_SECRET_KEY;
-cashfree.XEnvironment = process.env.CASHFREE_ENV === 'PROD' 
+cashfree.XEnvironment = process.env.CASHFREE_ENV === 'PRODUCTION' 
     ? CFEnvironment.PRODUCTION 
     : CFEnvironment.SANDBOX;
 
@@ -47,9 +47,9 @@ PaymentController.createOrder = async (req, res) => {
             order_id: `order_${bookingId}_${Date.now()}`,
             customer_details: {
                 customer_id: String(customerId || 'guest'),
-                customer_phone: String(customerPhone || '9999999999'),
-                customer_email: String(customerEmail || 'guest@example.com'),
-                customer_name: String(customerName || 'Guest')
+                customer_phone: String(customerPhone).replace(/\D/g, '') || '9999999999',
+                customer_email: String(customerEmail || 'guest@example.com').toLowerCase(),
+                customer_name: String(customerName || 'Guest').substring(0, 50)
             },
             order_meta: {
                 return_url: `${process.env.FRONTEND_URL}/booking-confirmation?bookingId=${bookingId}&order_id={order_id}`,
@@ -60,6 +60,14 @@ PaymentController.createOrder = async (req, res) => {
             }
         };
 
+        // Validate customer details
+        if (orderRequest.customer_details.customer_phone.length < 10) {
+            return Helper.response("Failed", "Invalid Phone Number", {}, res, 400);
+        }
+        if (!orderRequest.customer_details.customer_email.includes('@')) {
+             return Helper.response("Failed", "Invalid Email", {}, res, 400);
+        }
+
         // Corrected: Removed date string argument
         const response = await cashfree.PGCreateOrder(orderRequest);
         const order = response.data;
@@ -69,7 +77,13 @@ PaymentController.createOrder = async (req, res) => {
             paymentSessionId: order.payment_session_id 
         });
 
-        Helper.response("Success", "Order created successfully", { order }, res, 200);
+        // Return ONLY what frontend needs
+        const paymentData = {
+            order_id: order.order_id,
+            payment_session_id: order.payment_session_id
+        };
+
+        Helper.response("Success", "Order created successfully", paymentData, res, 200);
 
     } catch (error) {
         console.error('[Payment] Create order error:', error?.response?.data || error.message);
