@@ -61,7 +61,6 @@ SearchController.searchVehicles = async (req, res) => {
 
         // Get available vehicles
         let availableVehicles = [];
-
         if (startDate && endDate) {
             // Check availability for date range
             const start = new Date(startDate);

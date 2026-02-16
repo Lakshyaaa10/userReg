@@ -1,9 +1,10 @@
+require('dotenv').config();
 const express = require('express');
+
 // const connectDb = require('./DBconnect/conn')
 const app = express()
 const Router = require('express')
 const routes = require('./routes/routes')
-const { configDotenv } = require('dotenv').config()
 const mongoose = require("mongoose");
 const multer = require('multer');
 const fileUpload = require("express-fileupload");
@@ -21,7 +22,7 @@ app.use(cors({
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-mongoose.connect('mongodb+srv://lakshya:lakshya1234@userreg.qjnxhvm.mongodb.net/', {
+mongoose.connect(process.env.MONGO_URL, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 });
