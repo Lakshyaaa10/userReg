@@ -1,18 +1,18 @@
 const Helper = require('../Helper/Helper');
 const Booking = require('../Models/BookingModel');
 const Availability = require('../Models/AvailabilityModel');
+const Notification = require('../Models/NotificationModel');
+const RegisteredVehicles = require('../Models/RegisteredVehicles');
 const { Cashfree, CFEnvironment } = require('cashfree-pg');
 
 // ✅ v5.x - instance-based initialization
-const cashfree = new Cashfree(
+ const cashfree = new Cashfree(
     process.env.CASHFREE_ENV === 'PRODUCTION'
         ? CFEnvironment.PRODUCTION
         : CFEnvironment.SANDBOX,
     process.env.CASHFREE_APP_ID,
     process.env.CASHFREE_SECRET_KEY
 );
-
-
 
 const PaymentController = {};
 
@@ -158,6 +158,150 @@ PaymentController.handleWebhook = async (req, res) => {
     } catch (error) {
         console.error('[Payment] Webhook error:', error);
         res.status(500).send('Webhook Error');
+    }
+};
+
+// ✅ Create offline/Cashfree booking from mobile app
+PaymentController.createOfflineBooking = async (req, res) => {
+    try {
+        const {
+            renterId, renterName, renterPhone, renterEmail,
+            vehicleId, startDate, endDate,
+            totalDays = 0, pricePerDay = 0, pricePerHour = 0,
+            totalAmount,
+            pickupLocation, dropoffLocation
+        } = req.body;
+
+        if (!renterId || !vehicleId || !startDate || !endDate || totalAmount === undefined) {
+            return Helper.response("Failed", "Missing required fields", {}, res, 400);
+        }
+
+        // Fetch vehicle to get owner info
+        const vehicle = await RegisteredVehicles.findById(vehicleId)
+            .populate('registerId', 'Name ContactNo')
+            .populate('rentalId', 'ownerName ContactNo');
+
+        if (!vehicle) {
+            return Helper.response("Failed", "Vehicle not found", {}, res, 404);
+        }
+
+        const register = vehicle.registerId || {};
+        const rental = vehicle.rentalId || {};
+        const ownerName = register.Name || rental.ownerName || 'N/A';
+        const ownerPhone = register.ContactNo || rental.ContactNo || 'N/A';
+
+        const newBooking = new Booking({
+            renterId,
+            renterName,
+            renterPhone: renterPhone || 'N/A',
+            renterEmail: renterEmail || 'N/A',
+            ownerId: vehicle.userId,
+            ownerName,
+            ownerPhone,
+            vehicleId,
+            vehicleModel: vehicle.vehicleModel || 'Unknown',
+            vehicleType: vehicle.vehicleType || 'Unknown',
+            // vehiclePhoto is required in schema - use placeholder if missing
+            vehiclePhoto: vehicle.vehiclePhoto || 'https://placehold.co/400x300?text=Vehicle',
+            startDate: new Date(startDate),
+            endDate: new Date(endDate),
+            totalDays: totalDays || 1,
+            // pricePerDay is required in schema - use pricePerHour as fallback for hourly bookings
+            pricePerDay: pricePerDay || pricePerHour || 0,
+            totalAmount,
+            pickupLocation: pickupLocation || 'To be determined',
+            dropoffLocation: dropoffLocation || 'To be determined',
+            status: 'pending',
+            paymentStatus: 'pending'
+        });
+
+        const savedBooking = await newBooking.save();
+
+        // Notify owner (non-fatal)
+        try {
+            const ownerNotification = new Notification({
+                userId: vehicle.userId,
+                title: "New Booking Request",
+                message: `${renterName} wants to book your ${newBooking.vehicleModel}`,
+                type: "booking_request",
+                relatedId: savedBooking._id,
+                relatedType: "booking"
+            });
+            await ownerNotification.save();
+        } catch (notifErr) {
+            console.error('[Payment] Notification error (non-fatal):', notifErr.message);
+        }
+
+        Helper.response("Success", "Booking created successfully", {
+            bookingId: savedBooking._id
+        }, res, 201);
+
+    } catch (error) {
+        console.error('[Payment] createOfflineBooking error:', error);
+        Helper.response("Failed", "Internal Server Error", error.message, res, 500);
+    }
+};
+
+// ✅ Update booking status (called after payment success/cancel from mobile)
+PaymentController.updateBookingStatus = async (req, res) => {
+    try {
+        const { bookingId, status, paymentStatus } = req.body;
+
+        if (!bookingId) {
+            return Helper.response("Failed", "Missing bookingId", {}, res, 400);
+        }
+
+        const booking = await Booking.findById(bookingId);
+        if (!booking) {
+            return Helper.response("Failed", "Booking not found", {}, res, 404);
+        }
+
+        if (status) booking.status = status;
+        if (paymentStatus) booking.paymentStatus = paymentStatus;
+        await booking.save();
+
+        Helper.response("Success", "Booking status updated", { booking }, res, 200);
+
+    } catch (error) {
+        console.error('[Payment] updateBookingStatus error:', error);
+        Helper.response("Failed", "Internal Server Error", error.message, res, 500);
+    }
+};
+
+// ✅ NEW: Get user details by userId
+PaymentController.getUserDetails = async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const User = require('../Models/userModel');
+        const user = await User.findById(userId).select('-password');
+        if (!user) return Helper.response("Failed", "User not found", {}, res, 404);
+        Helper.response("Success", "User details fetched", user, res, 200);
+    } catch (error) {
+        console.error('[Payment] getUserDetails error:', error);
+        Helper.response("Failed", "Internal Server Error", error.message, res, 500);
+    }
+};
+
+// ✅ Get payment status for a booking
+PaymentController.getPaymentStatus = async (req, res) => {
+    try {
+        const { bookingId } = req.params;
+        if (!bookingId) return Helper.response("Failed", "Missing bookingId", {}, res, 400);
+
+        const booking = await Booking.findById(bookingId);
+        if (!booking) return Helper.response("Failed", "Booking not found", {}, res, 404);
+
+        Helper.response("Success", "Payment status fetched", {
+            bookingId: booking._id,
+            paymentStatus: booking.paymentStatus,
+            status: booking.status,
+            totalAmount: booking.totalAmount,
+            paymentId: booking.paymentId || null
+        }, res, 200);
+
+    } catch (error) {
+        console.error('[Payment] getPaymentStatus error:', error);
+        Helper.response("Failed", "Internal Server Error", error.message, res, 500);
     }
 };
 
