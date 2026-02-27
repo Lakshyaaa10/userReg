@@ -9,28 +9,27 @@ const driverLicenseSchema = new mongoose.Schema({
         unique: true
     },
     
-    // License Information
+    // License Information (filled by admin during verification)
     licenseNumber: {
         type: String,
-        required: true,
-        unique: true
+        default: ''
     },
     licenseType: {
         type: String,
-        required: true,
-        enum: ['MCWG', 'MCWOG', 'LMV', 'HMV', 'HGV']
+        enum: ['MCWG', 'MCWOG', 'LMV', 'HMV', 'HGV', 'LMV+MCWG', ''],
+        default: ''
     },
     issueDate: {
         type: Date,
-        required: true
+        default: null
     },
     expiryDate: {
         type: Date,
-        required: true
+        default: null
     },
     issuingAuthority: {
         type: String,
-        required: true
+        default: ''
     },
     
     // Document Uploads
@@ -63,18 +62,18 @@ const driverLicenseSchema = new mongoose.Schema({
         default: ''
     },
     
-    // Additional Information
+    // Additional Information (optional, filled by admin)
     fullName: {
         type: String,
-        required: true
+        default: ''
     },
     dateOfBirth: {
         type: Date,
-        required: true
+        default: null
     },
     address: {
         type: String,
-        required: true
+        default: ''
     },
     
     // Timestamps

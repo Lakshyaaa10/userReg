@@ -37,6 +37,17 @@ bookingRouter.post('/cancel', (req, res, next) => {
     BookingController.cancelBooking(req, res, next);
 });
 
+// Extend booking
+bookingRouter.put('/extend', (req, res, next) => {
+    BookingController.extendBooking(req, res, next);
+});
+
+// Get invoice for a booking
+const InvoiceController = require('../controller/InvoiceController');
+bookingRouter.get('/:bookingId/invoice', (req, res, next) => {
+    InvoiceController.generateInvoice(req, res, next);
+});
+
 // Get booking by ID (must be last to avoid route conflicts)
 bookingRouter.get('/:bookingId', (req, res, next) => {
     BookingController.getBookingById(req, res, next);
