@@ -370,3 +370,28 @@ exports.googleAuth = async (req, res) => {
     );
   }
 };
+
+exports.deleteAccount = async (req, res) => {
+  try {
+    const token = req.headers["authorization"];
+    if (!token) {
+      return Helper.response("Failed", "No token provided", {}, res, 401);
+    }
+    const string = token.split(" ")[1];
+    
+    // Find the user by token
+    const user = await userModel.findOne({ token: string });
+
+    if (!user) {
+        return Helper.response("Failed", "User not found or already deleted", {}, res, 404);
+    }
+
+    // Delete the user record
+    await userModel.findByIdAndDelete(user._id);
+
+    return Helper.response("Success", "Account deleted successfully", {}, res, 200);
+  } catch (error) {
+    console.error("Delete Account error:", error);
+    return Helper.response("Failed", "Internal Server Error", error.message, res, 500);
+  }
+};

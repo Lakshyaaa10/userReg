@@ -3,6 +3,7 @@ const Booking = require('../Models/BookingModel');
 const Availability = require('../Models/AvailabilityModel');
 const Notification = require('../Models/NotificationModel');
 const Earnings = require('../Models/EarningsModel');
+const CouponController = require('./CouponController');
 
 const BookingController = {};
 
@@ -66,6 +67,19 @@ BookingController.createBooking = async (req, res) => {
         const platformFee = Math.round(totalAmount * 0.1); // 10% platform fee
         const netAmount = totalAmount - platformFee;
 
+        // Apply coupon if provided
+        let couponResult = { discount: 0, finalAmount: totalAmount, couponCode: '' };
+        const couponCode = req.body.couponCode;
+        if (couponCode) {
+            try {
+                couponResult = await CouponController.applyCoupon(
+                    couponCode, renterId, totalAmount, vehicle.category
+                );
+            } catch (couponError) {
+                return Helper.response("Failed", couponError.message, {}, res, 400);
+            }
+        }
+
         // Create booking
         const newBooking = new Booking({
             renterId,
@@ -84,6 +98,9 @@ BookingController.createBooking = async (req, res) => {
             totalDays,
             pricePerDay,
             totalAmount,
+            couponCode: couponResult.couponCode,
+            discountAmount: couponResult.discount,
+            finalAmount: couponResult.finalAmount,
             pickupLocation,
             dropoffLocation,
             specialRequests: specialRequests || ''
@@ -458,6 +475,137 @@ BookingController.getBookingById = async (req, res) => {
 
     } catch (error) {
         console.error('Get booking by ID error:', error);
+        Helper.response("Failed", "Internal Server Error", error.message, res, 500);
+    }
+};
+
+// ============================================
+// Extend an active booking
+// ============================================
+BookingController.extendBooking = async (req, res) => {
+    try {
+        const { bookingId, newEndDate } = req.body;
+
+        if (!bookingId || !newEndDate) {
+            return Helper.response("Failed", "Missing required fields: bookingId, newEndDate", {}, res, 400);
+        }
+
+        const booking = await Booking.findById(bookingId);
+        if (!booking) {
+            return Helper.response("Failed", "Booking not found", {}, res, 404);
+        }
+
+        // Only active bookings can be extended
+        const allowedStatuses = ['accepted', 'confirmed', 'in_progress'];
+        if (!allowedStatuses.includes(booking.status)) {
+            return Helper.response("Failed", `Booking cannot be extended (current status: ${booking.status})`, {}, res, 400);
+        }
+
+        const currentEndDate = new Date(booking.endDate);
+        const requestedEndDate = new Date(newEndDate);
+
+        // New end date must be after current end date
+        if (requestedEndDate <= currentEndDate) {
+            return Helper.response("Failed", "New end date must be after the current end date", {}, res, 400);
+        }
+
+        // Calculate additional days
+        const timeDiff = requestedEndDate.getTime() - currentEndDate.getTime();
+        const additionalDays = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
+
+        // Check availability for extension dates
+        for (let d = new Date(currentEndDate); d <= requestedEndDate; d.setDate(d.getDate() + 1)) {
+            // Skip the current end date (already booked)
+            if (d.getTime() === currentEndDate.getTime()) continue;
+
+            const availability = await Availability.findOne({
+                vehicleId: booking.vehicleId,
+                date: d,
+                isAvailable: false
+            });
+
+            if (availability && availability.reason !== 'booked') {
+                return Helper.response("Failed", `Vehicle not available on ${d.toDateString()}`, {}, res, 400);
+            }
+
+            // Check if another booking has this date
+            const conflictingBooking = await Booking.findOne({
+                vehicleId: booking.vehicleId,
+                _id: { $ne: bookingId },
+                status: { $in: ['accepted', 'confirmed', 'in_progress'] },
+                startDate: { $lte: d },
+                endDate: { $gte: d }
+            });
+
+            if (conflictingBooking) {
+                return Helper.response("Failed", `Vehicle is booked by someone else on ${d.toDateString()}`, {}, res, 400);
+            }
+        }
+
+        // Calculate additional amount
+        const additionalAmount = additionalDays * booking.pricePerDay;
+
+        // Save original end date on first extension
+        if (!booking.originalEndDate) {
+            booking.originalEndDate = booking.endDate;
+        }
+
+        // Push to extension history
+        booking.extensionHistory.push({
+            previousEndDate: booking.endDate,
+            newEndDate: requestedEndDate,
+            additionalDays,
+            additionalAmount,
+            extendedAt: new Date()
+        });
+
+        // Update booking
+        booking.endDate = requestedEndDate;
+        booking.totalDays = booking.totalDays + additionalDays;
+        booking.totalAmount = booking.totalAmount + additionalAmount;
+        if (booking.finalAmount !== null) {
+            booking.finalAmount = booking.finalAmount + additionalAmount;
+        }
+        booking.extensionCount = (booking.extensionCount || 0) + 1;
+
+        await booking.save();
+
+        // Mark new dates as unavailable
+        for (let d = new Date(currentEndDate); d <= requestedEndDate; d.setDate(d.getDate() + 1)) {
+            if (d.getTime() === currentEndDate.getTime()) continue;
+            await Availability.findOneAndUpdate(
+                { vehicleId: booking.vehicleId, date: d },
+                {
+                    vehicleId: booking.vehicleId,
+                    ownerId: booking.ownerId,
+                    date: d,
+                    isAvailable: false,
+                    reason: 'booked'
+                },
+                { upsert: true, new: true }
+            );
+        }
+
+        // Notify owner
+        const ownerNotification = new Notification({
+            userId: booking.ownerId,
+            title: "Booking Extended",
+            message: `${booking.renterName} extended their booking for ${booking.vehicleModel} by ${additionalDays} day(s) until ${requestedEndDate.toDateString()}`,
+            type: "general",
+            relatedId: bookingId,
+            relatedType: "booking"
+        });
+        await ownerNotification.save();
+
+        Helper.response("Success", "Booking extended successfully", {
+            booking,
+            additionalDays,
+            additionalAmount,
+            newEndDate: requestedEndDate
+        }, res, 200);
+
+    } catch (error) {
+        console.error('Extend booking error:', error);
         Helper.response("Failed", "Internal Server Error", error.message, res, 500);
     }
 };

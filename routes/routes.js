@@ -29,6 +29,11 @@ routes.use("/api/user", UserRouter)
 // Registration routes
 routes.use("/reg", userMiddleware, RegisterRouter)
 
+// License / KYC routes
+const LicenseController = require('../controller/LicenseController');
+routes.post('/api/user/submit-license', userMiddleware, (req, res) => LicenseController.submitLicense(req, res));
+routes.get('/api/user/kyc-status', userMiddleware, (req, res) => LicenseController.getLicenseStatus(req, res));
+
 // Vehicle routes
 routes.use('/veh', userMiddleware, vehicleRoutes)
 
@@ -76,6 +81,10 @@ routes.use('/veh', VehicleManagementRouter)
 // Review routes
 const ReviewRouter = require('./ReviewRouter');
 routes.use('/reviews', ReviewRouter);
+
+// Coupon routes
+const CouponRouter = require('./CouponRouter');
+routes.use('/coupons', CouponRouter);
 
 routes.use("*", (req, res, next) => {
   console.log(`Unhandled route: ${req.originalUrl}`);

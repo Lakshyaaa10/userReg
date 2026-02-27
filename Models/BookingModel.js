@@ -76,6 +76,40 @@ const bookingSchema = new mongoose.Schema({
         required: true
     },
 
+    // Coupon Details
+    couponCode: {
+        type: String,
+        default: ''
+    },
+    discountAmount: {
+        type: Number,
+        default: 0
+    },
+    finalAmount: {
+        type: Number,
+        default: null // totalAmount - discountAmount (null = no coupon applied)
+    },
+
+    // Booking Extension
+    originalEndDate: {
+        type: Date,
+        default: null
+    },
+    extensionCount: {
+        type: Number,
+        default: 0
+    },
+    extensionHistory: [{
+        previousEndDate: Date,
+        newEndDate: Date,
+        additionalDays: Number,
+        additionalAmount: Number,
+        extendedAt: {
+            type: Date,
+            default: Date.now
+        }
+    }],
+
     // Booking Status
     status: {
         type: String,
@@ -90,6 +124,10 @@ const bookingSchema = new mongoose.Schema({
         default: 'pending'
     },
     paymentId: {
+        type: String,
+        default: ''
+    },
+    cashfreeOrderId: {
         type: String,
         default: ''
     },
