@@ -77,12 +77,12 @@ SearchController.searchVehicles = async (req, res) => {
                 if (maxPrice) registeredVehiclesQuery.rentalPrice.$lte = parseInt(maxPrice);
             }
 
-            // Get all vehicles matching basic criteria from RegisteredVehicles
             const allRentals = await RegisteredVehicles.find(registeredVehiclesQuery)
                 .select('userId registerId vehicleModel vehicleType rentalPrice vehiclePhoto additionalVehicles')
                 .populate('registerId', 'Name City State Address ContactNo')
                 .populate('rentalId', 'City State Address ContactNo businessName ownerName')
-                .sort({ createdAt: -1 });
+                .sort({ createdAt: -1 })
+                .limit(req.query.dbLimit ? parseInt(req.query.dbLimit) : 0);
 
             // Flatten vehicles from main field and additionalVehicles array
             let allVehicles = [];
@@ -179,13 +179,13 @@ SearchController.searchVehicles = async (req, res) => {
                 if (maxPrice) registeredVehiclesQuery.rentalPrice.$lte = parseInt(maxPrice);
             }
 
-            // Get verified vehicles from RegisteredVehicles model with personal details from Register
             const allRegisteredVehicles = await RegisteredVehicles.find(registeredVehiclesQuery)
                 .select('userId registerId vehicleModel vehicleType category subcategory rentalPrice hourlyPrice vehiclePhoto licensePlate latitude longitude')
                 .populate('userId', 'username email mobile')
                 .populate('registerId', 'Name Age Address Landmark Pincode City State ContactNo latitude longitude')
                 .populate('rentalId', 'City State Address latitude longitude ContactNo')
-                .sort({ createdAt: -1 });
+                .sort({ createdAt: -1 })
+                .limit(req.query.dbLimit ? parseInt(req.query.dbLimit) : 0);
 
             // Filter out vehicles that are currently booked (today onwards)
             const today = new Date();
@@ -539,7 +539,8 @@ SearchController.getVehiclesByCategory = async (req, res) => {
             .populate('userId', 'username email mobile')
             .populate('registerId', 'Name Age Address Landmark Pincode City State ContactNo latitude longitude')
             .populate('rentalId', 'City State Address Landmark Pincode latitude longitude ContactNo businessName ownerName')
-            .sort({ createdAt: -1 });
+            .sort({ createdAt: -1 })
+            .limit(req.query.dbLimit ? parseInt(req.query.dbLimit) : 0);
 
         console.log(`Found ${allRegisteredVehicles.length} registered vehicles for category: ${category}`);
         console.log('Query used:', JSON.stringify(registeredVehiclesQuery, null, 2));
