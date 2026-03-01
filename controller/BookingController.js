@@ -92,7 +92,7 @@ BookingController.createBooking = async (req, res) => {
             vehicleId,
             vehicleModel: vehicle.vehicleModel,
             vehicleType: vehicle.vehicleType,
-            vehiclePhoto: vehicle.vehiclePhoto,
+            vehiclePhoto: vehicle.vehiclePhoto || '/static_bike.png',
             startDate: start,
             endDate: end,
             totalDays,
@@ -108,23 +108,7 @@ BookingController.createBooking = async (req, res) => {
 
         const savedBooking = await newBooking.save();
 
-        // Mark dates as unavailable in Availability collection
-        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-            await Availability.findOneAndUpdate(
-                {
-                    vehicleId: vehicleId,
-                    date: d
-                },
-                {
-                    vehicleId: vehicleId,
-                    ownerId: vehicle._id,
-                    date: d,
-                    isAvailable: false,
-                    reason: 'booked'
-                },
-                { upsert: true, new: true }
-            );
-        }
+        // Availability is now marked on successful payment, not immediately on booking creation
 
         // Create notification for owner
         const ownerNotification = new Notification({
