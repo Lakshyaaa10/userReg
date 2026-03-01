@@ -99,8 +99,14 @@ PaymentController.verifyPayment = async (req, res) => {
             const endDate = new Date(existingBooking.endDate);
             for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
                 await Availability.findOneAndUpdate(
-                    { vehicleId: existingBooking.vehicleId },
-                    { $addToSet: { unavailableDates: new Date(d) } },
+                    { vehicleId: existingBooking.vehicleId, date: new Date(d) },
+                    { 
+                        vehicleId: existingBooking.vehicleId, 
+                        ownerId: existingBooking.ownerId, 
+                        date: new Date(d), 
+                        isAvailable: false, 
+                        reason: 'booked' 
+                    },
                     { upsert: true, new: true }
                 );
             }
