@@ -1,6 +1,5 @@
 const Helper = require('../Helper/Helper');
 const DriverLicense = require('../Models/DriverLicenseModel');
-const cloudinary = require('cloudinary');
 
 const LicenseController = {};
 
@@ -25,26 +24,16 @@ LicenseController.submitLicense = async (req, res) => {
             return Helper.response("Failed", "Your license verification is already pending", { status: 'pending' }, res, 400);
         }
 
-        // Upload front photo to Cloudinary
-        const frontUpload = await cloudinary.v2.uploader.upload(req.files.licenseFrontPhoto.tempFilePath, {
-            folder: "DriverLicense",
-            use_filename: true,
-            unique_filename: true,
-            resource_type: "image",
-        });
+        // Upload front photo to local storage
+        const frontPhotoUrl = await Helper.uploadVehicle(req.files.licenseFrontPhoto, 'licenses');
 
-        // Upload back photo to Cloudinary
-        const backUpload = await cloudinary.v2.uploader.upload(req.files.licenseBackPhoto.tempFilePath, {
-            folder: "DriverLicense",
-            use_filename: true,
-            unique_filename: true,
-            resource_type: "image",
-        });
+        // Upload back photo to local storage
+        const backPhotoUrl = await Helper.uploadVehicle(req.files.licenseBackPhoto, 'licenses');
 
         // If rejected license exists, update photos and re-submit
         if (existingLicense && existingLicense.verificationStatus === 'rejected') {
-            existingLicense.licenseFrontPhoto = frontUpload.secure_url;
-            existingLicense.licenseBackPhoto = backUpload.secure_url;
+            existingLicense.licenseFrontPhoto = frontPhotoUrl;
+            existingLicense.licenseBackPhoto = backPhotoUrl;
             existingLicense.verificationStatus = 'pending';
             existingLicense.rejectionReason = '';
             existingLicense.verifiedBy = null;
@@ -60,8 +49,8 @@ LicenseController.submitLicense = async (req, res) => {
         // Create new license entry (photos only)
         const newLicense = new DriverLicense({
             userId,
-            licenseFrontPhoto: frontUpload.secure_url,
-            licenseBackPhoto: backUpload.secure_url,
+            licenseFrontPhoto: frontPhotoUrl,
+            licenseBackPhoto: backPhotoUrl,
             verificationStatus: 'pending'
         });
 
