@@ -1,48 +1,61 @@
-const { userInfo } = require("os");
-const userModel= require('../Models/userModel')
-const Helper = {}
-const cloudinary =require('cloudinary');
-const { error } = require("console");
-  
-cloudinary.v2.config({
-  cloud_name:"dmj7uubkb",
-  api_key:"773738537246321",
-  api_secret:"fQX6rWHbCcG1xCW1Sqq4UdM2F4M",
-  secure:true
-})
-    Helper.response = (status, message, data = [], res, statusCode) => {
-        res.status(statusCode).json({
-          status: status,
-          message: message,
-          data: data,
-        });
-      };
+const userModel = require('../Models/userModel');
+const path = require('path');
+const fs = require('fs');
 
-    Helper.updateToken=async(id,token)=>{
-        
-        
-        const  userData=await userModel.findByIdAndUpdate(id,{token:token})
-        if(userData){
-            return token
+const Helper = {};
+
+Helper.response = (status, message, data = [], res, statusCode) => {
+    res.status(statusCode).json({
+        status: status,
+        message: message,
+        data: data,
+    });
+};
+
+Helper.updateToken = async (id, token) => {
+    const userData = await userModel.findByIdAndUpdate(id, { token: token });
+    if (userData) {
+        return token;
+    }
+};
+
+/**
+ * Saves an uploaded file (from express-fileupload) to the local uploads directory
+ * and returns a publicly accessible URL.
+ *
+ * @param {object} image - The file object from req.files (has .tempFilePath and .name)
+ * @param {string} [subfolder='vehicles'] - Subfolder inside /uploads to organise files
+ * @returns {string} The public URL for the saved file
+ */
+Helper.uploadVehicle = async (image, subfolder = 'vehicles') => {
+    try {
+        if (!image || !image.tempFilePath) {
+            throw new Error("No temp file found");
         }
-        
-    }  
-    Helper.uploadVehicle=async(image)=>{
-      try{
-         if (!image || !image.tempFilePath) {
-      Helper.response("Failed","No temp file found",{},res,200)
+
+        // Ensure the uploads/<subfolder> directory exists
+        const uploadDir = path.join(__dirname, '..', 'uploads', subfolder);
+        if (!fs.existsSync(uploadDir)) {
+            fs.mkdirSync(uploadDir, { recursive: true });
+        }
+
+        // Build a unique filename: timestamp-originalname
+        const ext = path.extname(image.name) || '.jpg';
+        const baseName = path.basename(image.name, ext).replace(/[^a-zA-Z0-9_-]/g, '_');
+        const uniqueName = `${Date.now()}-${baseName}${ext}`;
+        const destPath = path.join(uploadDir, uniqueName);
+
+        // Copy the temp file to the destination
+        fs.copyFileSync(image.tempFilePath, destPath);
+
+        // Return the publicly accessible URL
+        const baseUrl = process.env.BACKEND_URL || 'http://localhost:5001';
+        return `${baseUrl}/uploads/${subfolder}/${uniqueName}`;
+
+    } catch (err) {
+        console.error('File upload error:', err);
+        throw err;
     }
-         const upload = await cloudinary.uploader.upload(image.tempFilePath,{
-        folder:"Register",
-         use_filename: true,
-         unique_filename: false,
-         overwrite: true,
-         resource_type: "image",
-      })
-      return upload.secure_url;
-      }catch(err){
-        console.log(err)
-      } 
-     
-    }
-      module.exports = Helper;
+};
+
+module.exports = Helper;
