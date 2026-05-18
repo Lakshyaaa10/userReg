@@ -49,7 +49,7 @@ Helper.uploadVehicle = async (image, subfolder = 'vehicles') => {
         fs.copyFileSync(image.tempFilePath, destPath);
 
         // Return the publicly accessible URL
-        const baseUrl = process.env.BACKEND_URL || 'http://localhost:5001';
+        const baseUrl = 'https://api.zugo.co.in';
         return `${baseUrl}/uploads/${subfolder}/${uniqueName}`;
 
     } catch (err) {
