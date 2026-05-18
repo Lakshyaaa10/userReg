@@ -1,9 +1,13 @@
+const mongoose = require('mongoose');
 const Helper = require('../Helper/Helper');
 const Booking = require('../Models/BookingModel');
 const Availability = require('../Models/AvailabilityModel');
 const Notification = require('../Models/NotificationModel');
 const RegisteredVehicles = require('../Models/RegisteredVehicles');
+const PendingBookingPayment = require('../Models/PendingBookingPaymentModel');
+const CouponController = require('./CouponController');
 const { Cashfree, CFEnvironment } = require('cashfree-pg');
+const { sendBookingLifecycleEmails } = require('../helpers/bookingEmailService');
 
 // ✅ v5.x - instance-based initialization
  const cashfree = new Cashfree(
@@ -16,23 +20,264 @@ const { Cashfree, CFEnvironment } = require('cashfree-pg');
 
 const PaymentController = {};
 
+function normalizeVehicleIdList(ids) {
+    const seen = new Set();
+    const normalized = [];
+    for (const id of ids || []) {
+        if (!id) continue;
+        const key = id.toString();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        normalized.push(id);
+    }
+    return normalized;
+}
+
+function getStartOfDay(date) {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    return d;
+}
+
+function getEndOfDay(date) {
+    const d = new Date(date);
+    d.setHours(23, 59, 59, 999);
+    return d;
+}
+
+async function resolveBookingVehicleByAnyId(vehicleId) {
+    if (!vehicleId || !mongoose.Types.ObjectId.isValid(vehicleId)) {
+        return null;
+    }
+
+    const directVehicle = await RegisteredVehicles.findOne({
+        _id: vehicleId,
+        verificationStatus: 'verified'
+    })
+        .populate('registerId', 'Name ContactNo')
+        .populate('rentalId', 'ownerName ContactNo');
+
+    if (directVehicle) {
+        return {
+            vehicle: directVehicle,
+            requestedVehicleId: vehicleId,
+            resolvedVehicleId: directVehicle._id,
+            bookingVehicleIds: [directVehicle._id],
+            additionalVehicle: null
+        };
+    }
+
+    const parentVehicle = await RegisteredVehicles.findOne({
+        verificationStatus: 'verified',
+        'additionalVehicles._id': vehicleId
+    })
+        .populate('registerId', 'Name ContactNo')
+        .populate('rentalId', 'ownerName ContactNo');
+
+    if (!parentVehicle) {
+        return null;
+    }
+
+    const additionalVehicle = parentVehicle.additionalVehicles?.find(
+        (subVehicle) => subVehicle?._id?.toString() === vehicleId.toString()
+    );
+
+    if (!additionalVehicle) {
+        return null;
+    }
+
+    return {
+        vehicle: parentVehicle,
+        requestedVehicleId: vehicleId,
+        resolvedVehicleId: parentVehicle._id,
+        bookingVehicleIds: normalizeVehicleIdList([vehicleId, parentVehicle._id]),
+        additionalVehicle
+    };
+}
+
+async function assertVehicleAvailable(bookingVehicleIds, startDate, endDate) {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const dayStart = getStartOfDay(d);
+        const dayEnd = getEndOfDay(d);
+
+        const availability = await Availability.findOne({
+            vehicleId: { $in: bookingVehicleIds },
+            date: { $gte: dayStart, $lte: dayEnd },
+            isAvailable: false
+        });
+
+        if (availability) {
+            throw new Error(`Vehicle not available on ${d.toDateString()}`);
+        }
+
+        const activeBooking = await Booking.findOne({
+            vehicleId: { $in: bookingVehicleIds },
+            status: { $in: ['pending', 'accepted', 'confirmed', 'in_progress'] },
+            startDate: { $lte: dayEnd },
+            endDate: { $gte: dayStart }
+        }).select('_id');
+
+        if (activeBooking) {
+            throw new Error(`Vehicle already booked on ${d.toDateString()}`);
+        }
+    }
+}
+
+async function markBookingDatesUnavailable(booking) {
+    const startDate = new Date(booking.startDate);
+    const endDate = new Date(booking.endDate);
+
+    for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+        await Availability.findOneAndUpdate(
+            { vehicleId: booking.vehicleId, date: new Date(d) },
+            {
+                vehicleId: booking.vehicleId,
+                ownerId: booking.ownerId,
+                date: new Date(d),
+                isAvailable: false,
+                reason: 'booked'
+            },
+            { upsert: true, new: true }
+        );
+    }
+}
+
+async function createPaidBookingFromPayload(bookingData, paymentInfo = {}) {
+    const {
+        renterId,
+        renterName,
+        renterPhone,
+        renterEmail,
+        vehicleId,
+        startDate,
+        endDate,
+        totalDays,
+        pricePerDay,
+        pricePerHour = 0,
+        pickupLocation,
+        dropoffLocation,
+        specialRequests,
+        couponCode
+    } = bookingData || {};
+
+    if (!renterId || !vehicleId || !startDate || !endDate || !totalDays || !(pricePerDay || pricePerHour)) {
+        throw new Error('Missing required booking fields');
+    }
+
+    const resolvedVehicle = await resolveBookingVehicleByAnyId(vehicleId);
+    if (!resolvedVehicle) {
+        throw new Error('Vehicle not found');
+    }
+
+    const vehicle = resolvedVehicle.vehicle;
+    const additionalVehicle = resolvedVehicle.additionalVehicle;
+    const bookingVehicleIds = normalizeVehicleIdList(resolvedVehicle.bookingVehicleIds);
+
+    await assertVehicleAvailable(bookingVehicleIds, startDate, endDate);
+
+    const register = vehicle.registerId || {};
+    const rental = vehicle.rentalId || {};
+    const ownerName = register.Name || rental.ownerName || 'N/A';
+    const ownerPhone = register.ContactNo || rental.ContactNo || 'N/A';
+    const displayVehicleModel = additionalVehicle?.model || vehicle.vehicleModel || 'Unknown';
+    const displayVehicleType = additionalVehicle?.subcategory || vehicle.vehicleType || 'Unknown';
+    const displayVehiclePhoto = additionalVehicle?.photo || vehicle.vehiclePhoto || '/static_bike.png';
+    const dailyPrice = pricePerDay || pricePerHour || 0;
+    const totalAmount = bookingData.totalAmount || (Number(totalDays) * Number(dailyPrice));
+    const couponCategory = additionalVehicle?.category || vehicle.category || vehicle.vehicleType;
+
+    let couponResult = { discount: 0, finalAmount: totalAmount, couponCode: '' };
+    if (couponCode) {
+        couponResult = await CouponController.applyCoupon(
+            couponCode, renterId, totalAmount, couponCategory
+        );
+    }
+
+    const booking = new Booking({
+        renterId,
+        renterName,
+        renterPhone: renterPhone || 'N/A',
+        renterEmail: renterEmail || 'N/A',
+        ownerId: vehicle.userId,
+        ownerName,
+        ownerPhone,
+        vehicleId: resolvedVehicle.resolvedVehicleId,
+        vehicleModel: displayVehicleModel,
+        vehicleType: displayVehicleType,
+        vehiclePhoto: displayVehiclePhoto,
+        startDate: new Date(startDate),
+        endDate: new Date(endDate),
+        totalDays,
+        pricePerDay: dailyPrice,
+        totalAmount,
+        couponCode: couponResult.couponCode,
+        discountAmount: couponResult.discount,
+        finalAmount: couponResult.finalAmount,
+        pickupLocation: pickupLocation || 'To be determined',
+        dropoffLocation: dropoffLocation || 'To be determined',
+        specialRequests: specialRequests || '',
+        status: 'confirmed',
+        paymentStatus: 'paid',
+        paymentId: paymentInfo.paymentId || '',
+        cashfreeOrderId: paymentInfo.orderId || '',
+        paymentMethod: paymentInfo.paymentMethod || 'Cashfree'
+    });
+
+    const savedBooking = await booking.save();
+    await markBookingDatesUnavailable(savedBooking);
+
+    try {
+        await new Notification({
+            userId: vehicle.userId,
+            title: "New Paid Booking",
+            message: `${savedBooking.renterName} paid and booked your ${savedBooking.vehicleModel}`,
+            type: "booking_request",
+            relatedId: savedBooking._id,
+            relatedType: "booking"
+        }).save();
+    } catch (notifErr) {
+        console.error('[Payment] Notification error (non-fatal):', notifErr.message);
+    }
+
+    return savedBooking;
+}
+
 PaymentController.createOrder = async (req, res) => {
     console.log('[Cashfree] APP_ID:', process.env.CASHFREE_APP_ID ? 'SET ✓' : 'MISSING ✗');
 console.log('[Cashfree] SECRET:', process.env.CASHFREE_SECRET_KEY ? 'SET ✓' : 'MISSING ✗');
 console.log('[Cashfree] ENV:', process.env.CASHFREE_ENV || 'SANDBOX (default)');
     try {
         const {
-            amount, currency = 'INR', bookingId,
+            amount, currency = 'INR', bookingId, bookingData,
             customerId, customerPhone, customerEmail, customerName
         } = req.body;
 
         if (!amount) return Helper.response("Failed", "Amount is required", {}, res, 400);
-        if (!bookingId) return Helper.response("Failed", "Booking ID is required", {}, res, 400);
+        if (!bookingId && !bookingData) {
+            return Helper.response("Failed", "Booking data is required", {}, res, 400);
+        }
+
+        let orderBookingRef = bookingId;
+        if (bookingData) {
+            const resolvedVehicle = await resolveBookingVehicleByAnyId(bookingData.vehicleId);
+            if (!resolvedVehicle) {
+                return Helper.response("Failed", "Vehicle not found", {}, res, 404);
+            }
+            await assertVehicleAvailable(
+                normalizeVehicleIdList(resolvedVehicle.bookingVehicleIds),
+                bookingData.startDate,
+                bookingData.endDate
+            );
+            orderBookingRef = new mongoose.Types.ObjectId().toString();
+        }
 
         const orderRequest = {
             order_amount: parseFloat(amount),
             order_currency: currency,
-            order_id: `order_${bookingId}_${Date.now()}`,
+            order_id: `order_${orderBookingRef}_${Date.now()}`,
             customer_details: {
                 customer_id: String(customerId || 'guest'),
                 customer_phone: String(customerPhone).replace(/\D/g, '') || '9999999999',
@@ -40,10 +285,12 @@ console.log('[Cashfree] ENV:', process.env.CASHFREE_ENV || 'SANDBOX (default)');
                 customer_name: String(customerName || 'Guest').substring(0, 50)
             },
             order_meta: {
-                return_url: `${process.env.FRONTEND_URL}/booking-confirmation?bookingId=${bookingId}&order_id={order_id}`,
-                notify_url: `${process.env.BACKEND_URL}/api/payment/webhook`
+                return_url: bookingId
+                    ? `${process.env.FRONTEND_URL}/booking-confirmation?bookingId=${bookingId}&order_id={order_id}`
+                    : `${process.env.FRONTEND_URL}/booking-confirmation?order_id={order_id}`,
+                notify_url: `${process.env.BACKEND_URL}/payments/webhook`
             },
-            order_tags: { bookingId: String(bookingId) }
+            order_tags: { bookingId: bookingId ? String(bookingId) : '', pendingBooking: bookingData ? 'true' : 'false' }
         };
 
         if (orderRequest.customer_details.customer_phone.length < 10)
@@ -55,15 +302,31 @@ console.log('[Cashfree] ENV:', process.env.CASHFREE_ENV || 'SANDBOX (default)');
         const response = await cashfree.PGCreateOrder(orderRequest);
         const order = response.data;
 
+        if (bookingData) {
+            await PendingBookingPayment.create({
+                orderId: order.order_id,
+                bookingData,
+                amount: parseFloat(amount),
+                currency,
+                customerId: mongoose.Types.ObjectId.isValid(customerId) ? customerId : null
+            });
+        }
+
         Helper.response("Success", "Order created successfully", {
             order_id: order.order_id,
-            payment_session_id: order.payment_session_id
+            payment_session_id: order.payment_session_id,
+            bookingId: bookingId || null
         }, res, 200);
 
     } catch (error) {
         console.error('[Payment] Create order error:', error?.response?.data || error.message);
+        const statusCode = error?.response?.status || (
+            /Vehicle (not available|already booked)|Missing required booking fields|Vehicle not found/.test(error.message)
+                ? 400
+                : 500
+        );
         Helper.response("Failed", error?.response?.data?.message || "Order creation failed",
-            error?.response?.data || error.message, res, 500);
+            error?.response?.data || error.message, res, statusCode);
     }
 };
 
@@ -71,17 +334,26 @@ PaymentController.verifyPayment = async (req, res) => {
     try {
         const { orderId, bookingId } = req.body;
 
-        if (!orderId || !bookingId)
-            return Helper.response("Failed", "Missing required fields", {}, res, 400);
+        if (!orderId)
+            return Helper.response("Failed", "Missing orderId", {}, res, 400);
 
-        const existingBooking = await Booking.findById(bookingId);
-        if (!existingBooking)
-            return Helper.response("Failed", "Booking not found", {}, res, 404);
+        let existingBooking = bookingId ? await Booking.findById(bookingId) : null;
+        const pendingBookingPayment = !existingBooking
+            ? await PendingBookingPayment.findOne({ orderId })
+            : null;
 
-        if (existingBooking.paymentStatus === 'paid')
+        if (!existingBooking && pendingBookingPayment?.bookingId) {
+            existingBooking = await Booking.findById(pendingBookingPayment.bookingId);
+        }
+
+        if (existingBooking?.paymentStatus === 'paid')
             return Helper.response("Success", "Payment already verified", {
-                booking: existingBooking, alreadyVerified: true
+                booking: existingBooking, bookingId: existingBooking._id, alreadyVerified: true
             }, res, 200);
+
+        if (!existingBooking && !pendingBookingPayment) {
+            return Helper.response("Failed", "Booking payment session not found", {}, res, 404);
+        }
 
         // ✅ Called on instance
         const response = await cashfree.PGOrderFetchPayments(orderId);
@@ -89,30 +361,36 @@ PaymentController.verifyPayment = async (req, res) => {
         const successfulPayment = payments.find(p => p.payment_status === 'SUCCESS');
 
         if (successfulPayment) {
-            existingBooking.paymentStatus = 'paid';
-            existingBooking.paymentId = successfulPayment.cf_payment_id;
-            existingBooking.cashfreeOrderId = orderId;
-            existingBooking.bookingStatus = 'confirmed';
-            await existingBooking.save();
+            if (existingBooking) {
+                existingBooking.paymentStatus = 'paid';
+                existingBooking.paymentId = successfulPayment.cf_payment_id;
+                existingBooking.cashfreeOrderId = orderId;
+                existingBooking.status = 'confirmed';
+                await existingBooking.save();
+                await markBookingDatesUnavailable(existingBooking);
+            } else {
+                existingBooking = await createPaidBookingFromPayload(pendingBookingPayment.bookingData, {
+                    paymentId: successfulPayment.cf_payment_id,
+                    orderId,
+                    paymentMethod: successfulPayment.payment_group || 'Cashfree'
+                });
+                pendingBookingPayment.status = 'paid';
+                pendingBookingPayment.bookingId = existingBooking._id;
+                await pendingBookingPayment.save();
+            }
 
-            const startDate = new Date(existingBooking.startDate);
-            const endDate = new Date(existingBooking.endDate);
-            for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-                await Availability.findOneAndUpdate(
-                    { vehicleId: existingBooking.vehicleId, date: new Date(d) },
-                    { 
-                        vehicleId: existingBooking.vehicleId, 
-                        ownerId: existingBooking.ownerId, 
-                        date: new Date(d), 
-                        isAvailable: false, 
-                        reason: 'booked' 
-                    },
-                    { upsert: true, new: true }
-                );
+            try {
+                await sendBookingLifecycleEmails({
+                    booking: existingBooking,
+                    eventKey: 'payment_confirmed'
+                });
+            } catch (emailError) {
+                console.error('[Payment] confirm email error:', emailError.message);
             }
 
             return Helper.response("Success", "Payment verified and booking confirmed", {
                 booking: existingBooking,
+                bookingId: existingBooking._id,
                 paymentId: successfulPayment.cf_payment_id,
                 status: 'success'
             }, res, 200);
@@ -122,7 +400,10 @@ PaymentController.verifyPayment = async (req, res) => {
 
     } catch (error) {
         console.error('[Payment] Verify error:', error?.response?.data || error.message);
-        Helper.response("Failed", "Verification failed", error.message, res, 500);
+        const statusCode = /Vehicle (not available|already booked)|Missing required booking fields|Vehicle not found/.test(error.message)
+            ? 409
+            : 500;
+        Helper.response("Failed", "Verification failed", error.message, res, statusCode);
     }
 };
 
@@ -175,26 +456,58 @@ PaymentController.createOfflineBooking = async (req, res) => {
             vehicleId, startDate, endDate,
             totalDays = 0, pricePerDay = 0, pricePerHour = 0,
             totalAmount,
-            pickupLocation, dropoffLocation
+            pickupLocation, dropoffLocation,
+            couponCode,
+            paymentStatus,
+            paymentId,
+            cashfreeOrderId,
+            paymentMethod
         } = req.body;
 
         if (!renterId || !vehicleId || !startDate || !endDate || totalAmount === undefined) {
             return Helper.response("Failed", "Missing required fields", {}, res, 400);
         }
 
-        // Fetch vehicle to get owner info
-        const vehicle = await RegisteredVehicles.findById(vehicleId)
-            .populate('registerId', 'Name ContactNo')
-            .populate('rentalId', 'ownerName ContactNo');
+        if (paymentStatus !== 'paid' && !paymentId) {
+            return Helper.response(
+                "Failed",
+                "Booking is created only after payment. Use /payments/create-order before payment.",
+                {},
+                res,
+                400
+            );
+        }
 
-        if (!vehicle) {
+        const resolvedVehicle = await resolveBookingVehicleByAnyId(vehicleId);
+        if (!resolvedVehicle) {
             return Helper.response("Failed", "Vehicle not found", {}, res, 404);
         }
 
+        const vehicle = resolvedVehicle.vehicle;
+        const additionalVehicle = resolvedVehicle.additionalVehicle;
+        const bookingVehicleIds = normalizeVehicleIdList(resolvedVehicle.bookingVehicleIds);
         const register = vehicle.registerId || {};
         const rental = vehicle.rentalId || {};
         const ownerName = register.Name || rental.ownerName || 'N/A';
         const ownerPhone = register.ContactNo || rental.ContactNo || 'N/A';
+        const displayVehicleModel = additionalVehicle?.model || vehicle.vehicleModel || 'Unknown';
+        const displayVehicleType = additionalVehicle?.subcategory || vehicle.vehicleType || 'Unknown';
+        const displayVehiclePhoto = additionalVehicle?.photo || vehicle.vehiclePhoto || 'https://placehold.co/400x300?text=Vehicle';
+        const couponCategory = additionalVehicle?.category || vehicle.category || vehicle.vehicleType;
+
+        await assertVehicleAvailable(bookingVehicleIds, startDate, endDate);
+
+        // Apply coupon if provided
+        let couponResult = { discount: 0, finalAmount: totalAmount, couponCode: '' };
+        if (couponCode) {
+            try {
+                couponResult = await CouponController.applyCoupon(
+                    couponCode, renterId, totalAmount, couponCategory
+                );
+            } catch (couponError) {
+                return Helper.response("Failed", couponError.message, {}, res, 400);
+            }
+        }
 
         const newBooking = new Booking({
             renterId,
@@ -204,31 +517,38 @@ PaymentController.createOfflineBooking = async (req, res) => {
             ownerId: vehicle.userId,
             ownerName,
             ownerPhone,
-            vehicleId,
-            vehicleModel: vehicle.vehicleModel || 'Unknown',
-            vehicleType: vehicle.vehicleType || 'Unknown',
+            vehicleId: resolvedVehicle.resolvedVehicleId,
+            vehicleModel: displayVehicleModel,
+            vehicleType: displayVehicleType,
             // vehiclePhoto is required in schema - use placeholder if missing
-            vehiclePhoto: vehicle.vehiclePhoto || 'https://placehold.co/400x300?text=Vehicle',
+            vehiclePhoto: displayVehiclePhoto,
             startDate: new Date(startDate),
             endDate: new Date(endDate),
             totalDays: totalDays || 1,
             // pricePerDay is required in schema - use pricePerHour as fallback for hourly bookings
             pricePerDay: pricePerDay || pricePerHour || 0,
             totalAmount,
+            couponCode: couponResult.couponCode,
+            discountAmount: couponResult.discount,
+            finalAmount: couponResult.finalAmount,
             pickupLocation: pickupLocation || 'To be determined',
             dropoffLocation: dropoffLocation || 'To be determined',
-            status: 'pending',
-            paymentStatus: 'pending'
+            status: 'confirmed',
+            paymentStatus: 'paid',
+            paymentId: paymentId || '',
+            cashfreeOrderId: cashfreeOrderId || '',
+            paymentMethod: paymentMethod || 'Offline'
         });
 
         const savedBooking = await newBooking.save();
+        await markBookingDatesUnavailable(savedBooking);
 
         // Notify owner (non-fatal)
         try {
             const ownerNotification = new Notification({
                 userId: vehicle.userId,
-                title: "New Booking Request",
-                message: `${renterName} wants to book your ${newBooking.vehicleModel}`,
+                title: "New Paid Booking",
+                message: `${renterName} paid and booked your ${newBooking.vehicleModel}`,
                 type: "booking_request",
                 relatedId: savedBooking._id,
                 relatedType: "booking"
@@ -238,8 +558,21 @@ PaymentController.createOfflineBooking = async (req, res) => {
             console.error('[Payment] Notification error (non-fatal):', notifErr.message);
         }
 
+        try {
+            await sendBookingLifecycleEmails({
+                booking: savedBooking,
+                eventKey: 'payment_confirmed'
+            });
+        } catch (emailError) {
+            console.error('[Payment] paid booking email error:', emailError.message);
+        }
+
         Helper.response("Success", "Booking created successfully", {
-            bookingId: savedBooking._id
+            bookingId: savedBooking._id,
+            totalAmount,
+            discountAmount: couponResult.discount,
+            finalAmount: couponResult.finalAmount,
+            couponCode: couponResult.couponCode
         }, res, 201);
 
     } catch (error) {
@@ -265,6 +598,26 @@ PaymentController.updateBookingStatus = async (req, res) => {
         if (status) booking.status = status;
         if (paymentStatus) booking.paymentStatus = paymentStatus;
         await booking.save();
+
+        const lifecycleEvent =
+            paymentStatus === 'paid' || status === 'confirmed'
+                ? 'payment_confirmed'
+                : status === 'cancelled'
+                    ? 'cancelled'
+                    : status
+                        ? 'status_updated'
+                        : null;
+
+        if (lifecycleEvent && booking.paymentStatus === 'paid') {
+            try {
+                await sendBookingLifecycleEmails({
+                    booking,
+                    eventKey: lifecycleEvent
+                });
+            } catch (emailError) {
+                console.error('[Payment] update-status email error:', emailError.message);
+            }
+        }
 
         Helper.response("Success", "Booking status updated", { booking }, res, 200);
 

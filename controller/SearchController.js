@@ -7,6 +7,131 @@ const Booking = require('../Models/BookingModel');
 const Rentals = require('../Models/RegisterRentalModel');
 const SearchController = {};
 
+const ACTIVE_BOOKING_STATUSES = ['pending', 'accepted', 'confirmed', 'in_progress'];
+
+function getStartOfDay(date) {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    return d;
+}
+
+function getEndOfDay(date) {
+    const d = new Date(date);
+    d.setHours(23, 59, 59, 999);
+    return d;
+}
+
+function normalizeVehicleIdList(ids) {
+    const seen = new Set();
+    const normalized = [];
+    for (const id of ids || []) {
+        if (!id) continue;
+        const key = id.toString();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        normalized.push(id);
+    }
+    return normalized;
+}
+
+function getBookingVehicleIds(vehicle) {
+    if (Array.isArray(vehicle.bookingVehicleIds) && vehicle.bookingVehicleIds.length > 0) {
+        return normalizeVehicleIdList(vehicle.bookingVehicleIds);
+    }
+    return normalizeVehicleIdList([vehicle._id]);
+}
+
+async function hasBlockedAvailability(vehicleIds, startDate, endDate) {
+    const ids = normalizeVehicleIdList(vehicleIds);
+    if (ids.length === 0) return false;
+
+    const unavailable = await Availability.findOne({
+        vehicleId: { $in: ids },
+        isAvailable: false,
+        date: { $gte: getStartOfDay(startDate), $lte: getEndOfDay(endDate) }
+    }).select('_id');
+
+    return !!unavailable;
+}
+
+async function hasActiveBookingOverlap(vehicleIds, startDate, endDate) {
+    const ids = normalizeVehicleIdList(vehicleIds);
+    if (ids.length === 0) return false;
+
+    const activeBooking = await Booking.findOne({
+        vehicleId: { $in: ids },
+        status: { $in: ACTIVE_BOOKING_STATUSES },
+        startDate: { $lte: getEndOfDay(endDate) },
+        endDate: { $gte: getStartOfDay(startDate) }
+    }).select('_id');
+
+    return !!activeBooking;
+}
+
+async function resolveRegisteredVehicleByAnyId(vehicleId, populate = true) {
+    if (!vehicleId || !mongoose.Types.ObjectId.isValid(vehicleId)) {
+        return null;
+    }
+
+    let query = RegisteredVehicles.findOne({
+        _id: vehicleId,
+        verificationStatus: 'verified'
+    });
+
+    if (populate) {
+        query = query
+            .populate('userId', 'username email mobile')
+            .populate('registerId', 'Name Age Address Landmark Pincode City State ContactNo latitude longitude userId')
+            .populate('rentalId', 'businessName ownerName City State Address Landmark Pincode latitude longitude ContactNo userId');
+    }
+
+    const directVehicle = await query;
+    if (directVehicle) {
+        return {
+            vehicle: directVehicle,
+            requestedVehicleId: vehicleId,
+            resolvedVehicleId: directVehicle._id,
+            bookingVehicleIds: [directVehicle._id],
+            isMainVehicle: true,
+            additionalVehicle: null
+        };
+    }
+
+    query = RegisteredVehicles.findOne({
+        verificationStatus: 'verified',
+        'additionalVehicles._id': vehicleId
+    });
+
+    if (populate) {
+        query = query
+            .populate('userId', 'username email mobile')
+            .populate('registerId', 'Name Age Address Landmark Pincode City State ContactNo latitude longitude userId')
+            .populate('rentalId', 'businessName ownerName City State Address Landmark Pincode latitude longitude ContactNo userId');
+    }
+
+    const parentVehicle = await query;
+    if (!parentVehicle) {
+        return null;
+    }
+
+    const additionalVehicle = parentVehicle.additionalVehicles?.find(
+        (subVehicle) => subVehicle?._id?.toString() === vehicleId.toString()
+    );
+
+    if (!additionalVehicle) {
+        return null;
+    }
+
+    return {
+        vehicle: parentVehicle,
+        requestedVehicleId: vehicleId,
+        resolvedVehicleId: parentVehicle._id,
+        bookingVehicleIds: normalizeVehicleIdList([vehicleId, parentVehicle._id]),
+        isMainVehicle: false,
+        additionalVehicle
+    };
+}
+
 // Haversine formula to calculate distance between two coordinates
 function calculateDistance(lat1, lon1, lat2, lon2) {
     const R = 6371; // Radius of the Earth in kilometers
@@ -65,6 +190,9 @@ SearchController.searchVehicles = async (req, res) => {
             // Check availability for date range
             const start = new Date(startDate);
             const end = new Date(endDate);
+            if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) {
+                return Helper.response("Failed", "Invalid date range", {}, res, 400);
+            }
 
             // Use RegisteredVehicles as primary model
             const registeredVehiclesQuery = { verificationStatus: 'verified' };
@@ -114,15 +242,17 @@ SearchController.searchVehicles = async (req, res) => {
                         Address: register.Address || rentalInfo.Address || 'N/A',
                         businessName: rentalInfo.businessName || '',
                         ownerName: rentalInfo.ownerName || '',
-                        isMainVehicle: true
+                        isMainVehicle: true,
+                        bookingVehicleIds: [rental._id]
                     });
                 }
 
                 // Add additional vehicles
                 if (rental.additionalVehicles && rental.additionalVehicles.length > 0) {
                     for (const additionalVehicle of rental.additionalVehicles) {
+                        const additionalVehicleId = additionalVehicle._id || rental._id;
                         allVehicles.push({
-                            _id: rental._id,
+                            _id: additionalVehicleId,
                             Name: register.Name || rental.userId?.username || 'N/A',
                             VehicleModel: additionalVehicle.model, // Backward compatibility
                             vehicleModel: additionalVehicle.model, // New field name
@@ -137,7 +267,9 @@ SearchController.searchVehicles = async (req, res) => {
                             businessName: rentalInfo.businessName || '',
                             ownerName: rentalInfo.ownerName || '',
                             isMainVehicle: false,
-                            additionalVehicleId: additionalVehicle._id
+                            parentVehicleId: rental._id,
+                            additionalVehicleId: additionalVehicle._id,
+                            bookingVehicleIds: normalizeVehicleIdList([additionalVehicleId, rental._id])
                         });
                     }
                 }
@@ -145,22 +277,11 @@ SearchController.searchVehicles = async (req, res) => {
 
             // Filter by availability
             for (const vehicle of allVehicles) {
-                let isAvailable = true;
+                const bookingVehicleIds = getBookingVehicleIds(vehicle);
+                const availabilityBlocked = await hasBlockedAvailability(bookingVehicleIds, start, end);
+                const bookingBlocked = await hasActiveBookingOverlap(bookingVehicleIds, start, end);
 
-                for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-                    const availability = await Availability.findOne({
-                        vehicleId: vehicle._id,
-                        date: d,
-                        isAvailable: false
-                    });
-
-                    if (availability) {
-                        isAvailable = false;
-                        break;
-                    }
-                }
-
-                if (isAvailable) {
+                if (!availabilityBlocked && !bookingBlocked) {
                     availableVehicles.push(vehicle);
                 }
             }
@@ -187,9 +308,9 @@ SearchController.searchVehicles = async (req, res) => {
                 .sort({ createdAt: -1 })
                 .limit(req.query.dbLimit ? parseInt(req.query.dbLimit) : 0);
 
-            // Filter out vehicles that are currently booked (today onwards)
-            const today = new Date();
-            today.setHours(0, 0, 0, 0); // Start of today
+            // Filter out vehicles that are currently booked (active today)
+            const todayStart = getStartOfDay(new Date());
+            const todayEnd = getEndOfDay(new Date());
 
             availableVehicles = [];
 
@@ -198,9 +319,10 @@ SearchController.searchVehicles = async (req, res) => {
                 // Check if vehicle has any active bookings
                 const activeBooking = await Booking.findOne({
                     vehicleId: vehicle._id,
-                    status: { $in: ['pending', 'accepted', 'in_progress'] },
-                    endDate: { $gte: today }
-                });
+                    status: { $in: ACTIVE_BOOKING_STATUSES },
+                    startDate: { $lte: todayEnd },
+                    endDate: { $gte: todayStart }
+                }).select('_id');
 
                 if (!activeBooking) {
                     // Get personal details from Register model (via registerId) or rentalId
@@ -306,53 +428,56 @@ SearchController.getVehicleDetails = async (req, res) => {
             return Helper.response("Failed", "Missing vehicleId", {}, res, 400);
         }
 
-        // Use RegisteredVehicles as primary model
-        const registeredVehicle = await RegisteredVehicles.findOne({
-            _id: vehicleId,
-            verificationStatus: 'verified'
-        })
-            .populate('userId', 'username email mobile')
-            .populate('registerId', 'Name Age Address Landmark Pincode City State ContactNo latitude longitude')
-            .populate('rentalId', 'City State Address Landmark Pincode latitude longitude ContactNo');
-
-        let vehicle = null;
-        if (registeredVehicle) {
-            const register = registeredVehicle.registerId || {};
-            const rental = registeredVehicle.rentalId || {};
-            vehicle = {
-                _id: registeredVehicle._id,
-                Name: register.Name || registeredVehicle.userId?.username || 'N/A',
-                VehicleModel: registeredVehicle.vehicleModel, // Keep for backward compatibility
-                vehicleModel: registeredVehicle.vehicleModel, // New field name
-                vehicleType: registeredVehicle.vehicleType,
-                category: registeredVehicle.category,
-                subcategory: registeredVehicle.subcategory,
-                rentalPrice: registeredVehicle.rentalPrice,
-                hourlyPrice: registeredVehicle.hourlyPrice,
-                City: register.City || rental.City || 'N/A',
-                State: register.State || rental.State || 'N/A',
-                VehiclePhoto: registeredVehicle.vehiclePhoto, // Keep for backward compatibility
-                vehiclePhoto: registeredVehicle.vehiclePhoto, // New field name
-                ContactNo: register.ContactNo || rental.ContactNo || registeredVehicle.userId?.mobile || 'N/A',
-                Address: register.Address || rental.Address || 'N/A',
-                Landmark: register.Landmark || rental.Landmark || '',
-                Pincode: register.Pincode || rental.Pincode || '',
-                latitude: registeredVehicle.latitude || register.latitude || rental.latitude,
-                longitude: registeredVehicle.longitude || register.longitude || rental.longitude,
-                licensePlate: registeredVehicle.licensePlate,
-                source: 'registered',
-                verificationStatus: registeredVehicle.verificationStatus,
-                securityDeposit: registeredVehicle.securityDeposit,
-            };
-        }
-
-        if (!vehicle) {
+        const resolvedVehicle = await resolveRegisteredVehicleByAnyId(vehicleId, true);
+        if (!resolvedVehicle) {
             return Helper.response("Failed", "Vehicle not found or not verified", {}, res, 404);
         }
 
+        const registeredVehicle = resolvedVehicle.vehicle;
+        const additionalVehicle = resolvedVehicle.additionalVehicle;
+        const register = registeredVehicle.registerId || {};
+        const rental = registeredVehicle.rentalId || {};
+
+        const vehicle = {
+            _id: resolvedVehicle.requestedVehicleId,
+            resolvedVehicleId: resolvedVehicle.resolvedVehicleId,
+            isMainVehicle: resolvedVehicle.isMainVehicle,
+            parentVehicleId: resolvedVehicle.resolvedVehicleId,
+            additionalVehicleId: resolvedVehicle.isMainVehicle ? null : resolvedVehicle.requestedVehicleId,
+            Name: register.Name || registeredVehicle.userId?.username || 'N/A',
+            VehicleModel: additionalVehicle?.model || registeredVehicle.vehicleModel, // Keep for backward compatibility
+            vehicleModel: additionalVehicle?.model || registeredVehicle.vehicleModel, // New field name
+            vehicleType: additionalVehicle?.subcategory || registeredVehicle.vehicleType,
+            category: additionalVehicle?.category || registeredVehicle.category,
+            subcategory: additionalVehicle?.subcategory || registeredVehicle.subcategory,
+            rentalPrice: additionalVehicle?.rentalPrice ?? registeredVehicle.rentalPrice,
+            hourlyPrice: additionalVehicle ? null : registeredVehicle.hourlyPrice,
+            VehiclePhoto: additionalVehicle?.photo || registeredVehicle.vehiclePhoto, // Keep for backward compatibility
+            vehiclePhoto: additionalVehicle?.photo || registeredVehicle.vehiclePhoto, // New field name
+            ContactNo: register.ContactNo || rental.ContactNo || registeredVehicle.userId?.mobile || 'N/A',
+            Address: register.Address || rental.Address || 'N/A',
+            Landmark: register.Landmark || rental.Landmark || '',
+            Pincode: register.Pincode || rental.Pincode || '',
+            City: register.City || rental.City || 'N/A',
+            State: register.State || rental.State || 'N/A',
+            latitude: registeredVehicle.latitude || register.latitude || rental.latitude,
+            longitude: registeredVehicle.longitude || register.longitude || rental.longitude,
+            licensePlate: registeredVehicle.licensePlate,
+            rentalId: registeredVehicle.rentalId?._id || registeredVehicle.rentalId || null,
+            source: 'registered',
+            verificationStatus: registeredVehicle.verificationStatus,
+            securityDeposit: registeredVehicle.securityDeposit,
+        };
+
         // Get availability for next 30 days
         const availability = await Availability.find({
-            vehicleId: vehicleId,
+            vehicleId: {
+                $in: normalizeVehicleIdList(
+                    resolvedVehicle.isMainVehicle
+                        ? [registeredVehicle._id]
+                        : resolvedVehicle.bookingVehicleIds
+                )
+            },
             date: {
                 $gte: new Date(),
                 $lte: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
@@ -457,29 +582,43 @@ SearchController.getVehiclesByCategory = async (req, res) => {
         } = req.query;
 
         const skip = (page - 1) * limit;
+        const requestedStart = startDate ? new Date(startDate) : null;
+        const requestedEnd = endDate ? new Date(endDate) : null;
+        if ((startDate && !endDate) || (!startDate && endDate)) {
+            return Helper.response("Failed", "Both startDate and endDate are required together", {}, res, 400);
+        }
+        if ((requestedStart && isNaN(requestedStart.getTime())) || (requestedEnd && isNaN(requestedEnd.getTime()))) {
+            return Helper.response("Failed", "Invalid date format", {}, res, 400);
+        }
+        if (requestedStart && requestedEnd && requestedStart > requestedEnd) {
+            return Helper.response("Failed", "Invalid date range", {}, res, 400);
+        }
+        const hasValidDateRange = Boolean(
+            requestedStart &&
+            requestedEnd &&
+            !isNaN(requestedStart.getTime()) &&
+            !isNaN(requestedEnd.getTime()) &&
+            requestedStart <= requestedEnd
+        );
 
         // Use RegisteredVehicles as primary model for vehicle listings
         const registeredVehiclesQuery = { verificationStatus: 'verified' };
 
         // Date Availability Filtering
         let unavailableVehicleIds = [];
-        if (startDate && endDate) {
-            const start = new Date(startDate);
-            const end = new Date(endDate);
+        if (hasValidDateRange) {
+            const unavailableRecords = await Availability.find({
+                date: {
+                    $gte: getStartOfDay(requestedStart),
+                    $lte: getEndOfDay(requestedEnd)
+                },
+                isAvailable: false
+            }).select('vehicleId');
 
-            // Validate dates
-            if (!isNaN(start) && !isNaN(end) && start <= end) {
-                // Find all unavailability records strictly within the range
-                const unavailableRecords = await Availability.find({
-                    date: { $gte: start, $lte: end },
-                    isAvailable: false
-                }).select('vehicleId');
-
-                if (unavailableRecords.length > 0) {
-                    unavailableVehicleIds = unavailableRecords.map(r => r.vehicleId);
-                    // Exclude these vehicles from the main query
-                    registeredVehiclesQuery._id = { $nin: unavailableVehicleIds };
-                }
+            if (unavailableRecords.length > 0) {
+                unavailableVehicleIds = unavailableRecords.map(r => r.vehicleId);
+                // Exclude these vehicles from the main query
+                registeredVehiclesQuery._id = { $nin: unavailableVehicleIds };
             }
         }
 
@@ -595,21 +734,23 @@ SearchController.getVehiclesByCategory = async (req, res) => {
                 businessName: rental.businessName || '',
                 ownerName: rental.ownerName || '',
                 rentalId: rental._id || null,
-                userId: vehicle.userId?._id || vehicle.userId || null
+                userId: vehicle.userId?._id || vehicle.userId || null,
+                bookingVehicleIds: [vehicle._id]
             });
 
             // Add additional vehicles if any
             if (vehicle.additionalVehicles && vehicle.additionalVehicles.length > 0) {
                 for (const additionalVehicle of vehicle.additionalVehicles) {
+                    const additionalVehicleId = additionalVehicle._id || vehicle._id;
                     // Check availability for additional vehicle
                     if (unavailableVehicleIds.length > 0 &&
-                        additionalVehicle._id &&
-                        unavailableVehicleIds.some(id => id.toString() === additionalVehicle._id.toString())) {
+                        additionalVehicleId &&
+                        unavailableVehicleIds.some(id => id.toString() === additionalVehicleId.toString())) {
                         continue;
                     }
 
                     allVehicles.push({
-                        _id: vehicle._id,
+                        _id: additionalVehicleId,
                         Name: register.Name || vehicle.userId?.username || 'N/A',
                         VehicleModel: additionalVehicle.model, // Backward compatibility
                         vehicleModel: additionalVehicle.model, // New field name
@@ -629,12 +770,14 @@ SearchController.getVehiclesByCategory = async (req, res) => {
                         latitude: vehicle.latitude || register.latitude || rental.latitude,
                         longitude: vehicle.longitude || register.longitude || rental.longitude,
                         isMainVehicle: false,
+                        parentVehicleId: vehicle._id,
                         additionalVehicleId: additionalVehicle._id,
                         source: 'registered',
                         businessName: rental.businessName || '',
                         ownerName: rental.ownerName || '',
                         rentalId: rental._id || null,
-                        userId: vehicle.userId?._id || vehicle.userId || null
+                        userId: vehicle.userId?._id || vehicle.userId || null,
+                        bookingVehicleIds: normalizeVehicleIdList([additionalVehicleId, vehicle._id])
                     });
                 }
             }
@@ -642,18 +785,20 @@ SearchController.getVehiclesByCategory = async (req, res) => {
 
         console.log(`Total vehicles found: ${allVehicles.length} (including additional vehicles and registered vehicles)`);
 
-        // Filter out vehicles that are currently booked (today onwards)
-        const today = new Date();
-        today.setHours(0, 0, 0, 0); // Start of today
+        // Filter booked vehicles based on requested range or current day
+        const filterStart = hasValidDateRange ? getStartOfDay(requestedStart) : getStartOfDay(new Date());
+        const filterEnd = hasValidDateRange ? getEndOfDay(requestedEnd) : getEndOfDay(new Date());
 
         let vehicles = [];
         for (const vehicle of allVehicles) {
             // Check if vehicle has any active bookings
+            const bookingVehicleIds = getBookingVehicleIds(vehicle);
             const activeBooking = await Booking.findOne({
-                vehicleId: vehicle._id,
-                status: { $in: ['pending', 'accepted', 'in_progress'] },
-                endDate: { $gte: today }
-            });
+                vehicleId: { $in: bookingVehicleIds },
+                status: { $in: ACTIVE_BOOKING_STATUSES },
+                startDate: { $lte: filterEnd },
+                endDate: { $gte: filterStart }
+            }).select('_id');
 
             if (!activeBooking) {
                 vehicles.push(vehicle);
@@ -772,52 +917,56 @@ SearchController.getOwnerDetails = async (req, res) => {
             return Helper.response("Failed", "Missing vehicleId", {}, res, 400);
         }
 
-        const registeredVehicle = await RegisteredVehicles.findOne({
-            _id: vehicleId,
-            verificationStatus: 'verified'
-        })
-            .populate('userId', 'username email mobile')
-            .populate('registerId', 'Name Age Address Landmark Pincode City State ContactNo latitude longitude userId')
-            .populate('rentalId', 'City State Address Landmark Pincode latitude longitude ContactNo userId');
-
-        let owner = null;
-        if (registeredVehicle) {
-            const register = registeredVehicle.registerId || {};
-            const rental = registeredVehicle.rentalId || {};
-
-            // Extract User ID safely
-            let ownerUserId = null;
-            if (registeredVehicle.userId) {
-                ownerUserId = registeredVehicle.userId._id ? registeredVehicle.userId._id : registeredVehicle.userId;
-            }
-            if (!ownerUserId && register.userId) ownerUserId = register.userId;
-            if (!ownerUserId && rental.userId) ownerUserId = rental.userId;
-
-            console.log('Detected Owner User ID:', ownerUserId);
-
-            owner = {
-                Name: register.Name || registeredVehicle.userId?.username || rental.ownerName || 'Zugo Host',
-                Age: register.Age || null,
-                ContactNo: register.ContactNo || rental.ContactNo || registeredVehicle.userId?.mobile || 'N/A',
-                VehicleModel: registeredVehicle.vehicleModel, // Backward compatibility
-                vehicleModel: registeredVehicle.vehicleModel, // New field name
-                rentalPrice: registeredVehicle.rentalPrice,
-                hourlyPrice: registeredVehicle.hourlyPrice,
-                City: register.City || rental.City || 'N/A',
-                State: register.State || rental.State || 'N/A',
-                Address: register.Address || rental.Address || 'N/A',
-                Landmark: register.Landmark || rental.Landmark || '',
-                Pincode: register.Pincode || rental.Pincode || '',
-                latitude: registeredVehicle.latitude || register.latitude || rental.latitude,
-                longitude: registeredVehicle.longitude || register.longitude || rental.longitude,
-                source: 'registered',
-                userId: ownerUserId // Include userId for linking to host profile
-            };
-        }
-
-        if (!owner) {
+        const resolvedVehicle = await resolveRegisteredVehicleByAnyId(vehicleId, true);
+        if (!resolvedVehicle) {
             return Helper.response("Failed", "Owner not found or vehicle not verified", {}, res, 404);
         }
+
+        const registeredVehicle = resolvedVehicle.vehicle;
+        const additionalVehicle = resolvedVehicle.additionalVehicle;
+        const register = registeredVehicle.registerId || {};
+        const rental = registeredVehicle.rentalId || {};
+
+        // Extract User ID safely
+        let ownerUserId = null;
+        if (registeredVehicle.userId) {
+            ownerUserId = registeredVehicle.userId._id ? registeredVehicle.userId._id : registeredVehicle.userId;
+        }
+        if (!ownerUserId && register.userId) ownerUserId = register.userId;
+        if (!ownerUserId && rental.userId) ownerUserId = rental.userId;
+
+        console.log('Detected Owner User ID:', ownerUserId);
+
+        const owner = {
+            _id: resolvedVehicle.requestedVehicleId,
+            resolvedVehicleId: resolvedVehicle.resolvedVehicleId,
+            parentVehicleId: resolvedVehicle.resolvedVehicleId,
+            isMainVehicle: resolvedVehicle.isMainVehicle,
+            additionalVehicleId: resolvedVehicle.isMainVehicle ? null : resolvedVehicle.requestedVehicleId,
+            Name: register.Name || registeredVehicle.userId?.username || rental.ownerName || 'Zugo Host',
+            Age: register.Age || null,
+            ContactNo: register.ContactNo || rental.ContactNo || registeredVehicle.userId?.mobile || 'N/A',
+            phone: register.ContactNo || rental.ContactNo || registeredVehicle.userId?.mobile || 'N/A',
+            VehicleModel: additionalVehicle?.model || registeredVehicle.vehicleModel, // Backward compatibility
+            vehicleModel: additionalVehicle?.model || registeredVehicle.vehicleModel, // New field name
+            vehicleType: additionalVehicle?.subcategory || registeredVehicle.vehicleType,
+            category: additionalVehicle?.category || registeredVehicle.category,
+            subcategory: additionalVehicle?.subcategory || registeredVehicle.subcategory,
+            rentalPrice: additionalVehicle?.rentalPrice ?? registeredVehicle.rentalPrice,
+            hourlyPrice: additionalVehicle ? null : registeredVehicle.hourlyPrice,
+            vehiclePhoto: additionalVehicle?.photo || registeredVehicle.vehiclePhoto || null,
+            VehiclePhoto: additionalVehicle?.photo || registeredVehicle.vehiclePhoto || null,
+            City: register.City || rental.City || 'N/A',
+            State: register.State || rental.State || 'N/A',
+            Address: register.Address || rental.Address || 'N/A',
+            Landmark: register.Landmark || rental.Landmark || '',
+            Pincode: register.Pincode || rental.Pincode || '',
+            latitude: registeredVehicle.latitude || register.latitude || rental.latitude,
+            longitude: registeredVehicle.longitude || register.longitude || rental.longitude,
+            ReturnDuration: registeredVehicle.ReturnDuration || null,
+            source: 'registered',
+            userId: ownerUserId // Include userId for linking to host profile
+        };
 
         Helper.response("Success", "Owner details retrieved successfully", owner, res, 200);
 
@@ -849,34 +998,36 @@ SearchController.checkAvailability = async (req, res) => {
             return Helper.response("Failed", "Invalid end date format", {}, res, 400);
         }
 
-        // Use RegisteredVehicles as primary model
-        const registeredVehicle = await RegisteredVehicles.findOne({
-            _id: vehicleId,
-            verificationStatus: 'verified'
-        })
-            .populate('registerId', 'City State')
-            .populate('rentalId', 'City State');
-
-        let vehicle = null;
-        if (registeredVehicle) {
-            const register = registeredVehicle.registerId || {};
-            const rental = registeredVehicle.rentalId || {};
-            vehicle = {
-                _id: registeredVehicle._id,
-                VehicleModel: registeredVehicle.vehicleModel,
-                vehicleType: registeredVehicle.vehicleType,
-                rentalPrice: registeredVehicle.rentalPrice,
-                hourlyPrice: registeredVehicle.hourlyPrice,
-                City: register.City || rental.City || 'N/A',
-                State: register.State || rental.State || 'N/A',
-                isAvailable: registeredVehicle.isAvailable !== false,
-                source: 'registered'
-            };
-        }
-
-        if (!vehicle) {
+        const resolvedVehicle = await resolveRegisteredVehicleByAnyId(vehicleId, true);
+        if (!resolvedVehicle) {
             return Helper.response("Failed", "Vehicle not found or not verified", {}, res, 404);
         }
+
+        const registeredVehicle = resolvedVehicle.vehicle;
+        const additionalVehicle = resolvedVehicle.additionalVehicle;
+        const register = registeredVehicle.registerId || {};
+        const rental = registeredVehicle.rentalId || {};
+        const bookingVehicleIds = normalizeVehicleIdList(
+            resolvedVehicle.isMainVehicle
+                ? [registeredVehicle._id]
+                : resolvedVehicle.bookingVehicleIds
+        );
+
+        const vehicle = {
+            _id: resolvedVehicle.requestedVehicleId,
+            resolvedVehicleId: resolvedVehicle.resolvedVehicleId,
+            VehicleModel: additionalVehicle?.model || registeredVehicle.vehicleModel,
+            vehicleModel: additionalVehicle?.model || registeredVehicle.vehicleModel,
+            vehicleType: additionalVehicle?.subcategory || registeredVehicle.vehicleType,
+            category: additionalVehicle?.category || registeredVehicle.category,
+            subcategory: additionalVehicle?.subcategory || registeredVehicle.subcategory,
+            rentalPrice: additionalVehicle?.rentalPrice ?? registeredVehicle.rentalPrice,
+            hourlyPrice: additionalVehicle ? null : registeredVehicle.hourlyPrice,
+            City: register.City || rental.City || 'N/A',
+            State: register.State || rental.State || 'N/A',
+            isAvailable: registeredVehicle.isAvailable !== false,
+            source: 'registered'
+        };
 
         // Check if vehicle is generally available
         if (vehicle.isAvailable === false) {
@@ -884,6 +1035,7 @@ SearchController.checkAvailability = async (req, res) => {
                 isAvailable: false,
                 reason: "Vehicle is currently unavailable",
                 vehicleId: vehicleId,
+                resolvedVehicleId: resolvedVehicle.resolvedVehicleId,
                 startDate: start,
                 endDate: end,
                 pricingType: pricingType
@@ -892,25 +1044,27 @@ SearchController.checkAvailability = async (req, res) => {
 
         // Check availability for each day in the range
         const availabilityIssues = [];
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        const todayStart = getStartOfDay(new Date());
 
         for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+            const dayStart = getStartOfDay(d);
+            const dayEnd = getEndOfDay(d);
+
             // Skip past dates
-            if (d < today) {
+            if (dayEnd < todayStart) {
                 continue;
             }
 
             // Check availability record
             const availability = await Availability.findOne({
-                vehicleId: vehicleId,
-                date: d,
+                vehicleId: { $in: bookingVehicleIds },
+                date: { $gte: dayStart, $lte: dayEnd },
                 isAvailable: false
             });
 
             if (availability) {
                 availabilityIssues.push({
-                    date: d,
+                    date: dayStart,
                     reason: availability.reason || 'unavailable',
                     customReason: availability.customReason || ''
                 });
@@ -918,22 +1072,15 @@ SearchController.checkAvailability = async (req, res) => {
 
             // Check for active bookings
             const activeBooking = await Booking.findOne({
-                vehicleId: vehicleId,
-                status: { $in: ['pending', 'accepted', 'in_progress'] },
-                $or: [
-                    {
-                        startDate: { $lte: d },
-                        endDate: { $gte: d }
-                    },
-                    {
-                        startDate: d
-                    }
-                ]
+                vehicleId: { $in: bookingVehicleIds },
+                status: { $in: ACTIVE_BOOKING_STATUSES },
+                startDate: { $lte: dayEnd },
+                endDate: { $gte: dayStart }
             });
 
             if (activeBooking) {
                 availabilityIssues.push({
-                    date: d,
+                    date: dayStart,
                     reason: 'booked',
                     customReason: `Booked by ${activeBooking.renterName}`
                 });
@@ -945,6 +1092,7 @@ SearchController.checkAvailability = async (req, res) => {
         Helper.response("Success", "Vehicle availability checked", {
             isAvailable: isAvailable,
             vehicleId: vehicleId,
+            resolvedVehicleId: resolvedVehicle.resolvedVehicleId,
             startDate: start,
             endDate: end,
             pricingType: pricingType,
@@ -1092,9 +1240,9 @@ SearchController.getRentals = async (req, res) => {
                     rentalPrice: vehicle.rentalPrice,
                     formattedPrice: `₹${vehicle.rentalPrice}/day`,
 
-                    // Rating (Mock for now)
-                    rating: 4.5,
-                    reviewCount: 274,
+                    // Rating (placeholder until reviews are integrated)
+                    rating: 0,
+                    reviewCount: 0,
 
                     // Contact
                     ContactNo: register.ContactNo || rentalInfo.ContactNo || 'N/A'
@@ -1192,9 +1340,9 @@ SearchController.getRentalVehicles = async (req, res) => {
             const state = register.State || rentalInfo.State || rentalBusiness.State || 'N/A';
             const location = city !== 'N/A' && state !== 'N/A' ? `${city}, ${state}` : city;
 
-            // Default rating (can be enhanced with actual rating system)
-            const rating = 4.5;
-            const reviewCount = 274;
+            // Placeholder rating until reviews are integrated
+            const rating = 0;
+            const reviewCount = 0;
 
             // Format price
             const pricePerDay = vehicle.rentalPrice || 0;
@@ -1249,6 +1397,7 @@ SearchController.getRentalVehicles = async (req, res) => {
                 ReturnDuration: vehicle.ReturnDuration || 'Not specified',
                 isMainVehicle: true,
                 source: 'rental',
+                rentalId: rentalBusiness._id,
                 hasAdditionalVehicles: vehicle.additionalVehicles && vehicle.additionalVehicles.length > 0,
                 createdAt: vehicle.createdAt
             });
@@ -1256,8 +1405,9 @@ SearchController.getRentalVehicles = async (req, res) => {
             // Add additional vehicles if they exist
             if (vehicle.additionalVehicles && vehicle.additionalVehicles.length > 0) {
                 for (const additionalVehicle of vehicle.additionalVehicles) {
+                    const additionalVehicleId = additionalVehicle._id || vehicle._id;
                     formattedVehicles.push({
-                        _id: vehicle._id,
+                        _id: additionalVehicleId,
                         // Business/Provider Information
                         businessName: businessName,
                         providerName: businessName,
@@ -1302,8 +1452,10 @@ SearchController.getRentalVehicles = async (req, res) => {
                         // Additional Information
                         ReturnDuration: vehicle.ReturnDuration || 'Not specified',
                         isMainVehicle: false,
+                        parentVehicleId: vehicle._id,
                         additionalVehicleId: additionalVehicle._id,
-                        source: 'rental'
+                        source: 'rental',
+                        rentalId: rentalBusiness._id
                     });
                 }
             }

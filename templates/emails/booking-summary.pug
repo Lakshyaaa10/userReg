@@ -1,0 +1,33 @@
+extends ./layout.pug
+
+block content
+  p(style="margin:0 0 16px;font-size:16px;line-height:1.7;") Hi #{recipientName || 'there'},
+  p(style="margin:0 0 24px;font-size:16px;line-height:1.7;") #{intro}
+  table(role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0 0 24px;border-collapse:collapse;")
+    tr
+      td(style="padding:16px;border:1px solid #ece7dc;border-radius:16px;background:#fcfbf8;")
+        h2(style="margin:0 0 12px;font-size:20px;") #{booking.vehicleModel}
+        p(style="margin:0 0 6px;font-size:14px;") Booking ID: #{booking.bookingId}
+        p(style="margin:0 0 6px;font-size:14px;") Type: #{booking.vehicleType}
+        p(style="margin:0 0 6px;font-size:14px;") Trip: #{booking.startDate} → #{booking.endDate}
+        p(style="margin:0 0 6px;font-size:14px;") Days: #{booking.totalDays}
+        p(style="margin:0 0 6px;font-size:14px;") Pickup: #{booking.pickupLocation}
+        p(style="margin:0 0 6px;font-size:14px;") Drop: #{booking.dropoffLocation}
+        p(style="margin:0 0 6px;font-size:14px;") Amount: #{booking.finalAmount}
+        p(style="margin:0;font-size:14px;") Payment: #{booking.paymentStatus}
+  if audience === 'owner'
+    h3(style="margin:0 0 10px;font-size:16px;") Renter details
+    p(style="margin:0 0 6px;font-size:14px;") Name: #{booking.renterName}
+    p(style="margin:0 0 6px;font-size:14px;") Phone: #{booking.renterPhone}
+    p(style="margin:0 0 20px;font-size:14px;") Email: #{booking.renterEmail}
+  else
+    h3(style="margin:0 0 10px;font-size:16px;") Owner details
+    p(style="margin:0 0 6px;font-size:14px;") Name: #{booking.ownerName}
+    p(style="margin:0 0 20px;font-size:14px;") Phone: #{booking.ownerPhone}
+  h3(style="margin:0 0 10px;font-size:16px;") Extras
+  p(style="margin:0 0 6px;font-size:14px;") Coupon: #{booking.couponCode}
+  p(style="margin:0 0 6px;font-size:14px;") Discount: #{booking.discountAmount}
+  p(style="margin:0 0 6px;font-size:14px;") Status: #{booking.bookingStatus}
+  p(style="margin:0 0 6px;font-size:14px;") Payment method: #{booking.paymentMethod}
+  p(style="margin:0 0 6px;font-size:14px;") Requested: #{booking.createdAt}
+  p(style="margin:0;font-size:14px;") Special requests: #{booking.specialRequests}

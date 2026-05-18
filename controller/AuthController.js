@@ -1,95 +1,126 @@
 const userModel = require("../Models/userModel");
-const bodyParser = require("body-parser");
 const Helper = require("../Helper/Helper");
 const jwt = require("jsonwebtoken");
+const PendingSignup = require("../Models/PendingSignupModel");
+const { sendEmail } = require("../helpers/emailService");
+const { renderTemplate } = require("../helpers/emailTemplateService");
+
+const OTP_EXPIRY_MINUTES = 10;
+const OTP_RESEND_GAP_MS = 30 * 1000;
+
+function normalizeEmail(email) {
+  return String(email || "").trim().toLowerCase();
+}
+
+function generateOtp() {
+  return `${Math.floor(100000 + Math.random() * 900000)}`;
+}
+
+async function ensureUserUniqueness({ mobile, email, username }) {
+  const existingUser = await userModel.findOne({
+    $or: [{ mobile }, { email }, { username }],
+  });
+
+  if (existingUser) {
+    throw new Error("Mobile, Email, or Username already in use");
+  }
+}
+
+async function buildReferralState(referralCode) {
+  let walletPoints = 0;
+  let referredBy = null;
+
+  if (referralCode) {
+    const referrer = await userModel.findOne({ referralCode });
+    if (referrer) {
+      referredBy = referrer._id;
+      walletPoints = 20;
+    }
+  }
+
+  return { walletPoints, referredBy };
+}
+
+async function createUserRecord({
+  mobile,
+  password,
+  email,
+  username,
+  referralCode,
+  Name,
+  fullName,
+}) {
+  const finalUsername = username || Name || fullName;
+  const finalFullName = fullName || Name || "";
+
+  if (!mobile || !password || !email || !finalUsername) {
+    throw new Error("Mobile number, email, username, and password are required");
+  }
+
+  await ensureUserUniqueness({
+    mobile,
+    email,
+    username: finalUsername,
+  });
+
+  const safeUsername = finalUsername || "USER";
+  const baseName = safeUsername.substring(0, 4).toUpperCase();
+  const uniqueRef =
+    baseName + Math.random().toString(36).substr(2, 4).toUpperCase();
+
+  const { walletPoints, referredBy } = await buildReferralState(referralCode);
+
+  const newUser = new userModel({
+    mobile,
+    password,
+    email,
+    username: finalUsername,
+    fullName: finalFullName,
+    referralCode: uniqueRef,
+    walletPoints,
+    referredBy,
+  });
+
+  const savedUser = await newUser.save();
+
+  if (referredBy) {
+    await userModel.findByIdAndUpdate(referredBy, {
+      $inc: { walletPoints: 50 },
+      $push: {
+        referralHistory: {
+          userId: savedUser._id,
+          pointsEarned: 50,
+          date: new Date(),
+        },
+      },
+    });
+  }
+
+  return savedUser;
+}
+
+async function sendSignupOtpEmail({ email, otp, username, mobile }) {
+  const html = renderTemplate("otp-email.pug", {
+    previewText: `${otp} is your ${process.env.EMAIL_BRAND_NAME || "Zugo"} verification code`,
+    heading: "Verify your email",
+    recipientName: username,
+    otp,
+    email,
+    mobile,
+    expiryMinutes: OTP_EXPIRY_MINUTES,
+  });
+
+  await sendEmail({
+    to: email,
+    subject: `${process.env.EMAIL_BRAND_NAME || "Zugo"} email verification code`,
+    html,
+    text: `Your OTP is ${otp}. Valid for ${OTP_EXPIRY_MINUTES} minutes.`,
+  });
+}
+
 exports.createUser = async (req, res) => {
   try {
-    const { mobile, password, email, username, referralCode, Name, fullName } = req.body;
-
-    // Allow Name or fullName to be used as username if username is not explicitly provided
-    const finalUsername = username || Name || fullName;
-    const finalFullName = fullName || Name;
-
-    // For regular signup, password is required (OAuth users don't use this endpoint)
-    if (!mobile || !password || !email || !finalUsername) {
-      return Helper.response(
-        "Failed",
-        "Mobile number, email, username, and password are required",
-        {},
-        res,
-        400
-      );
-    }
-
-    const existingUser = await userModel.findOne({
-      $or: [{ mobile }, { email }, { username: finalUsername }],
-    });
-
-    if (existingUser) {
-      return Helper.response(
-        "Failed",
-        "Mobile, Email, or Username already in use",
-        {},
-        res,
-        409
-      );
-    }
-
-    // Generate unique referral code for the new user
-    // Format: Username (first 4 chars) + Random 4 alphanumeric
-    const safeUsername = finalUsername || "USER";
-    const baseName = safeUsername.substring(0, 4).toUpperCase();
-    const uniqueRef = baseName + Math.random().toString(36).substr(2, 4).toUpperCase();
-
-    let walletPoints = 0;
-    let referredBy = null;
-
-    // Handle Referral Logic
-    if (referralCode) {
-      const referrer = await userModel.findOne({ referralCode });
-      if (referrer) {
-        // Credit referrer (50 points)
-        referrer.walletPoints = (referrer.walletPoints || 0) + 50;
-        referrer.referralHistory.push({
-          userId: null, // We'll update this with real ID after save if needed, but for now we haven't saved newUser yet.
-          // Actually simpler: we can't push userId yet.
-          // Let's just add points now and maybe add history later or just trust the count.
-          // Better: Save newUser first then update referrer.
-        });
-
-        // We need to save referrer changes. 
-        // To properly link, we should do this after newUser is created.
-        referredBy = referrer._id;
-        walletPoints = 20; // Signup bonus for using code
-      }
-    }
-
-    const newUser = new userModel({
-      mobile,
-      password,
-      email,
-      username: finalUsername,
-      fullName: finalFullName,
-      referralCode: uniqueRef,
-      walletPoints,
-      referredBy
-    });
-
-    const savedUser = await newUser.save();
-
-    // If there was a referrer, update their history now that we have savedUser._id
-    if (referredBy) {
-      await userModel.findByIdAndUpdate(referredBy, {
-        $inc: { walletPoints: 50 },
-        $push: {
-          referralHistory: {
-            userId: savedUser._id,
-            pointsEarned: 50,
-            date: new Date()
-          }
-        }
-      });
-    }
+    const savedUser = await createUserRecord(req.body);
 
     return Helper.response(
       "Success",
@@ -100,7 +131,230 @@ exports.createUser = async (req, res) => {
     );
   } catch (error) {
     console.error(error);
-    return res.status(500).send("Internal Server Error");
+    const statusCode =
+      error.message === "Mobile, Email, or Username already in use"
+        ? 409
+        : error.message === "Mobile number, email, username, and password are required"
+        ? 400
+        : 500;
+    return Helper.response("Failed", error.message || "Internal Server Error", {}, res, statusCode);
+  }
+};
+exports.requestSignupOtp = async (req, res) => {
+  try {
+    const {
+      mobile,
+      password,
+      email,
+      username,
+      referralCode,
+      Name,
+      fullName,
+    } = req.body;
+
+    const normalizedEmail = normalizeEmail(email);
+    const finalUsername = username || Name || fullName;
+
+    if (!mobile || !password || !normalizedEmail || !finalUsername) {
+      return Helper.response(
+        "Failed",
+        "Mobile, email, username, password required",
+        {},
+        res,
+        400
+      );
+    }
+
+    await ensureUserUniqueness({
+      mobile: Number(mobile),
+      email: normalizedEmail,
+      username: finalUsername,
+    });
+
+    const existingPending = await PendingSignup.findOne({
+      $or: [{ email: normalizedEmail }, { mobile: Number(mobile) }],
+    });
+
+    if (
+      existingPending?.lastSentAt &&
+      Date.now() - new Date(existingPending.lastSentAt).getTime() < OTP_RESEND_GAP_MS
+    ) {
+      return Helper.response(
+        "Failed",
+        "Wait before requesting another OTP",
+        {},
+        res,
+        429
+      );
+    }
+
+    const otp = generateOtp();
+    const otpExpiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
+
+    await PendingSignup.findOneAndUpdate(
+      existingPending ? { _id: existingPending._id } : { email: normalizedEmail },
+      {
+        email: normalizedEmail,
+        mobile: Number(mobile),
+        username: finalUsername,
+        fullName: fullName || Name || "",
+        password,
+        referralCode: referralCode || "",
+        otp,
+        otpExpiresAt,
+        attempts: 0,
+        lastSentAt: new Date(),
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    await sendSignupOtpEmail({
+      email: normalizedEmail,
+      otp,
+      username: finalUsername,
+      mobile,
+    });
+
+    return Helper.response(
+      "Success",
+      "OTP sent to email",
+      {
+        email: normalizedEmail,
+        expiresInMinutes: OTP_EXPIRY_MINUTES,
+      },
+      res,
+      200
+    );
+  } catch (error) {
+    console.error("requestSignupOtp error:", error);
+    const conflict =
+      error.message === "Mobile, Email, or Username already in use";
+    return Helper.response(
+      "Failed",
+      error.message || "Unable to send OTP",
+      {},
+      res,
+      conflict ? 409 : 500
+    );
+  }
+};
+
+exports.verifySignupOtp = async (req, res) => {
+  try {
+    const normalizedEmail = normalizeEmail(req.body.email);
+    const otp = String(req.body.otp || "").trim();
+
+    if (!normalizedEmail || !otp) {
+      return Helper.response("Failed", "Email and OTP required", {}, res, 400);
+    }
+
+    const pendingSignup = await PendingSignup.findOne({ email: normalizedEmail });
+    if (!pendingSignup) {
+      return Helper.response("Failed", "OTP request not found", {}, res, 404);
+    }
+
+    if (pendingSignup.otpExpiresAt < new Date()) {
+      await PendingSignup.deleteOne({ _id: pendingSignup._id });
+      return Helper.response("Failed", "OTP expired", {}, res, 400);
+    }
+
+    if (pendingSignup.otp !== otp) {
+      pendingSignup.attempts = (pendingSignup.attempts || 0) + 1;
+      await pendingSignup.save();
+      return Helper.response("Failed", "Invalid OTP", {}, res, 400);
+    }
+
+    const savedUser = await createUserRecord({
+      mobile: pendingSignup.mobile,
+      password: pendingSignup.password,
+      email: pendingSignup.email,
+      username: pendingSignup.username,
+      fullName: pendingSignup.fullName,
+      referralCode: pendingSignup.referralCode,
+    });
+
+    await PendingSignup.deleteOne({ _id: pendingSignup._id });
+
+    return Helper.response(
+      "Success",
+      "Email verified. User created successfully",
+      { userId: savedUser._id },
+      res,
+      201
+    );
+  } catch (error) {
+    console.error("verifySignupOtp error:", error);
+    const statusCode =
+      error.message === "Mobile, Email, or Username already in use" ? 409 : 500;
+    return Helper.response(
+      "Failed",
+      error.message || "OTP verification failed",
+      {},
+      res,
+      statusCode
+    );
+  }
+};
+
+exports.resendSignupOtp = async (req, res) => {
+  try {
+    const normalizedEmail = normalizeEmail(req.body.email);
+    if (!normalizedEmail) {
+      return Helper.response("Failed", "Email required", {}, res, 400);
+    }
+
+    const pendingSignup = await PendingSignup.findOne({ email: normalizedEmail });
+    if (!pendingSignup) {
+      return Helper.response("Failed", "Signup request not found", {}, res, 404);
+    }
+
+    if (
+      pendingSignup.lastSentAt &&
+      Date.now() - new Date(pendingSignup.lastSentAt).getTime() < OTP_RESEND_GAP_MS
+    ) {
+      return Helper.response(
+        "Failed",
+        "Wait before requesting another OTP",
+        {},
+        res,
+        429
+      );
+    }
+
+    pendingSignup.otp = generateOtp();
+    pendingSignup.otpExpiresAt = new Date(
+      Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000
+    );
+    pendingSignup.lastSentAt = new Date();
+    pendingSignup.attempts = 0;
+    await pendingSignup.save();
+
+    await sendSignupOtpEmail({
+      email: pendingSignup.email,
+      otp: pendingSignup.otp,
+      username: pendingSignup.username,
+      mobile: pendingSignup.mobile,
+    });
+
+    return Helper.response(
+      "Success",
+      "OTP resent to email",
+      {
+        email: pendingSignup.email,
+        expiresInMinutes: OTP_EXPIRY_MINUTES,
+      },
+      res,
+      200
+    );
+  } catch (error) {
+    console.error("resendSignupOtp error:", error);
+    return Helper.response(
+      "Failed",
+      error.message || "Unable to resend OTP",
+      {},
+      res,
+      500
+    );
   }
 };
 exports.Login = async (req, res) => {
@@ -170,16 +424,35 @@ exports.Login = async (req, res) => {
 };
 exports.Logout = async (req, res) => {
   try {
-    const token = req.headers["authorization"];
-    const string = token.split(" ")[1];
-    const user = await userModel.findOne({ token: string });
+    const authHeader = req.headers["authorization"];
+
+    if (!authHeader) {
+      return Helper.response("Failed", "Authorization token is required", {}, res, 401);
+    }
+
+    const tokenParts = authHeader.split(" ");
+    if (tokenParts.length !== 2 || tokenParts[0] !== "Bearer") {
+      return Helper.response("Failed", "Invalid token format. Use 'Bearer <token>'", {}, res, 401);
+    }
+
+    const token = tokenParts[1];
+    const decoded = jwt.decode(token);
+
+    let user = await userModel.findOneAndUpdate(
+      { token: token },
+      { $set: { token: "" } },
+      { new: true }
+    );
+
+    if (!user && decoded && decoded.id) {
+      user = await userModel.findByIdAndUpdate(
+        decoded.id,
+        { $set: { token: "" } },
+        { new: true }
+      );
+    }
 
     if (user) {
-      const logout = await userModel.updateOne(
-        { token: string },
-        { $set: { token: "" } }
-      );
-
       Helper.response("Success", "Logout Successfully", {}, res, 200);
     } else {
       Helper.response("Failed", "Unable to Logout", {}, res, 200);

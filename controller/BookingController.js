@@ -1,11 +1,91 @@
+const mongoose = require('mongoose');
 const Helper = require('../Helper/Helper');
 const Booking = require('../Models/BookingModel');
 const Availability = require('../Models/AvailabilityModel');
 const Notification = require('../Models/NotificationModel');
 const Earnings = require('../Models/EarningsModel');
 const CouponController = require('./CouponController');
+const RegisteredVehicles = require('../Models/RegisteredVehicles');
+const { sendBookingLifecycleEmails } = require('../helpers/bookingEmailService');
 
 const BookingController = {};
+
+const ACTIVE_BOOKING_STATUSES = ['pending', 'accepted', 'confirmed', 'in_progress'];
+
+function getStartOfDay(date) {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    return d;
+}
+
+function getEndOfDay(date) {
+    const d = new Date(date);
+    d.setHours(23, 59, 59, 999);
+    return d;
+}
+
+function normalizeVehicleIdList(ids) {
+    const seen = new Set();
+    const normalized = [];
+    for (const id of ids || []) {
+        if (!id) continue;
+        const key = id.toString();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        normalized.push(id);
+    }
+    return normalized;
+}
+
+async function resolveBookingVehicleByAnyId(vehicleId) {
+    if (!vehicleId || !mongoose.Types.ObjectId.isValid(vehicleId)) {
+        return null;
+    }
+
+    const directVehicle = await RegisteredVehicles.findOne({
+        _id: vehicleId,
+        verificationStatus: 'verified'
+    })
+        .populate('registerId', 'Name ContactNo')
+        .populate('rentalId', 'ownerName ContactNo');
+
+    if (directVehicle) {
+        return {
+            vehicle: directVehicle,
+            requestedVehicleId: vehicleId,
+            resolvedVehicleId: directVehicle._id,
+            bookingVehicleIds: [directVehicle._id],
+            additionalVehicle: null
+        };
+    }
+
+    const parentVehicle = await RegisteredVehicles.findOne({
+        verificationStatus: 'verified',
+        'additionalVehicles._id': vehicleId
+    })
+        .populate('registerId', 'Name ContactNo')
+        .populate('rentalId', 'ownerName ContactNo');
+
+    if (!parentVehicle) {
+        return null;
+    }
+
+    const additionalVehicle = parentVehicle.additionalVehicles?.find(
+        (subVehicle) => subVehicle?._id?.toString() === vehicleId.toString()
+    );
+
+    if (!additionalVehicle) {
+        return null;
+    }
+
+    return {
+        vehicle: parentVehicle,
+        requestedVehicleId: vehicleId,
+        resolvedVehicleId: parentVehicle._id,
+        bookingVehicleIds: normalizeVehicleIdList([vehicleId, parentVehicle._id]),
+        additionalVehicle
+    };
+}
 
 // Create a new booking request
 BookingController.createBooking = async (req, res) => {
@@ -30,35 +110,51 @@ BookingController.createBooking = async (req, res) => {
             return Helper.response("Failed", "Missing required fields", {}, res, 400);
         }
 
-        // Get vehicle details from RegisteredVehicles
-        const RegisteredVehicles = require('../Models/RegisteredVehicles');
-        const vehicle = await RegisteredVehicles.findById(vehicleId)
-            .populate('registerId', 'Name ContactNo')
-            .populate('rentalId', 'ownerName ContactNo');
-
-        if (!vehicle) {
+        const resolvedVehicle = await resolveBookingVehicleByAnyId(vehicleId);
+        if (!resolvedVehicle) {
             return Helper.response("Failed", "Vehicle not found", {}, res, 404);
         }
+
+        const vehicle = resolvedVehicle.vehicle;
+        const additionalVehicle = resolvedVehicle.additionalVehicle;
+        const bookingVehicleIds = normalizeVehicleIdList(resolvedVehicle.bookingVehicleIds);
 
         // Get owner details from registerId or rentalId
         const register = vehicle.registerId || {};
         const rental = vehicle.rentalId || {};
         const ownerName = register.Name || rental.ownerName || 'N/A';
         const ownerPhone = register.ContactNo || rental.ContactNo || 'N/A';
+        const displayVehicleModel = additionalVehicle?.model || vehicle.vehicleModel;
+        const displayVehicleType = additionalVehicle?.subcategory || vehicle.vehicleType;
+        const displayVehiclePhoto = additionalVehicle?.photo || vehicle.vehiclePhoto || '/static_bike.png';
 
         // Check availability
         const start = new Date(startDate);
         const end = new Date(endDate);
 
         for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+            const dayStart = getStartOfDay(d);
+            const dayEnd = getEndOfDay(d);
+
             const availability = await Availability.findOne({
-                vehicleId: vehicleId,
-                date: d,
+                vehicleId: { $in: bookingVehicleIds },
+                date: { $gte: dayStart, $lte: dayEnd },
                 isAvailable: false
             });
 
             if (availability) {
                 return Helper.response("Failed", `Vehicle not available on ${d.toDateString()}`, {}, res, 400);
+            }
+
+            const activeBooking = await Booking.findOne({
+                vehicleId: { $in: bookingVehicleIds },
+                status: { $in: ACTIVE_BOOKING_STATUSES },
+                startDate: { $lte: dayEnd },
+                endDate: { $gte: dayStart }
+            }).select('_id');
+
+            if (activeBooking) {
+                return Helper.response("Failed", `Vehicle already booked on ${d.toDateString()}`, {}, res, 400);
             }
         }
 
@@ -89,10 +185,10 @@ BookingController.createBooking = async (req, res) => {
             ownerId: vehicle.userId, // Use userId from RegisteredVehicles
             ownerName: ownerName,
             ownerPhone: ownerPhone,
-            vehicleId,
-            vehicleModel: vehicle.vehicleModel,
-            vehicleType: vehicle.vehicleType,
-            vehiclePhoto: vehicle.vehiclePhoto || '/static_bike.png',
+            vehicleId: resolvedVehicle.resolvedVehicleId,
+            vehicleModel: displayVehicleModel,
+            vehicleType: displayVehicleType,
+            vehiclePhoto: displayVehiclePhoto,
             startDate: start,
             endDate: end,
             totalDays,
@@ -131,6 +227,17 @@ BookingController.createBooking = async (req, res) => {
             relatedType: "booking"
         });
         await renterNotification.save();
+
+        if (savedBooking.paymentStatus === 'paid') {
+            try {
+                await sendBookingLifecycleEmails({
+                    booking: savedBooking,
+                    eventKey: 'payment_confirmed'
+                });
+            } catch (emailError) {
+                console.error('Booking paid email error:', emailError.message);
+            }
+        }
 
         Helper.response("Success", "Booking request created successfully", { bookingId: savedBooking._id }, res, 201);
 
@@ -305,6 +412,17 @@ BookingController.updateBookingStatus = async (req, res) => {
         });
         await notification.save();
 
+        if (booking.paymentStatus === 'paid') {
+            try {
+                await sendBookingLifecycleEmails({
+                    booking,
+                    eventKey: 'status_updated'
+                });
+            } catch (emailError) {
+                console.error('Booking status email error:', emailError.message);
+            }
+        }
+
         Helper.response("Success", `Booking ${status} successfully`, { booking }, res, 200);
 
     } catch (error) {
@@ -428,6 +546,17 @@ BookingController.cancelBooking = async (req, res) => {
             relatedType: "booking"
         });
         await ownerNotification.save();
+
+        if (booking.paymentStatus === 'paid') {
+            try {
+                await sendBookingLifecycleEmails({
+                    booking,
+                    eventKey: 'cancelled'
+                });
+            } catch (emailError) {
+                console.error('Booking cancel email error:', emailError.message);
+            }
+        }
 
         Helper.response("Success", "Booking cancelled successfully", { booking }, res, 200);
 

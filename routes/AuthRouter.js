@@ -8,6 +8,15 @@ AuthRoutes.post( "/signup", (req, res,next) =>{
 AuthRoutes.post( "/register", (req, res,next) =>{
      Auth.createUser(req,res,next)
 })
+AuthRoutes.post("/signup/request-otp", (req, res, next) => {
+     Auth.requestSignupOtp(req, res, next)
+})
+AuthRoutes.post("/signup/verify-otp", (req, res, next) => {
+     Auth.verifySignupOtp(req, res, next)
+})
+AuthRoutes.post("/signup/resend-otp", (req, res, next) => {
+     Auth.resendSignupOtp(req, res, next)
+})
 AuthRoutes.get("/test",(req,res)=>{
     console.log('hii')
 } )
@@ -25,5 +34,4 @@ AuthRoutes.post('/google-auth',(req,res,next)=>{
 })
 
 module.exports = AuthRoutes
-
 
