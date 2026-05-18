@@ -12,6 +12,9 @@ block content
         p(style="margin:0 0 6px;font-size:14px;") Trip: #{booking.startDate} → #{booking.endDate}
         p(style="margin:0 0 6px;font-size:14px;") Days: #{booking.totalDays}
         p(style="margin:0 0 6px;font-size:14px;") Pickup: #{booking.pickupLocation}
+        if booking.pickupMapUrl
+          p(style="margin:0 0 6px;font-size:14px;")
+            a(href=booking.pickupMapUrl target="_blank" rel="noopener noreferrer" style="color:#2563eb;text-decoration:underline;") Open rental location in Google Maps
         p(style="margin:0 0 6px;font-size:14px;") Drop: #{booking.dropoffLocation}
         p(style="margin:0 0 6px;font-size:14px;") Amount: #{booking.finalAmount}
         p(style="margin:0;font-size:14px;") Payment: #{booking.paymentStatus}

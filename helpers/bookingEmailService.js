@@ -1,6 +1,7 @@
 const { sendEmail } = require("./emailService");
 const { renderTemplate } = require("./emailTemplateService");
 const userModel = require("../Models/userModel");
+const RegisteredVehicles = require("../Models/RegisteredVehicles");
 
 function formatCurrency(amount) {
   const value = Number(amount || 0);
@@ -47,7 +48,30 @@ async function resolveEmailRecipients(booking) {
   };
 }
 
-function buildBookingView(booking) {
+function buildGoogleMapsUrl(latitude, longitude) {
+  if (latitude === null || latitude === undefined || longitude === null || longitude === undefined) {
+    return "";
+  }
+
+  return `https://www.google.com/maps?q=${encodeURIComponent(`${latitude},${longitude}`)}`;
+}
+
+async function resolveRentalMapUrl(booking) {
+  if (!booking.vehicleId) return "";
+
+  const vehicle = await RegisteredVehicles.findById(booking.vehicleId)
+    .populate("rentalId", "latitude longitude")
+    .populate("registerId", "latitude longitude")
+    .select("rentalId registerId")
+    .lean();
+
+  const location = vehicle?.rentalId || vehicle?.registerId;
+  return buildGoogleMapsUrl(location?.latitude, location?.longitude);
+}
+
+async function buildBookingView(booking) {
+  const mapUrl = await resolveRentalMapUrl(booking);
+
   return {
     bookingId: booking._id?.toString(),
     vehicleModel: booking.vehicleModel,
@@ -56,6 +80,7 @@ function buildBookingView(booking) {
     endDate: formatDate(booking.endDate),
     totalDays: booking.totalDays,
     pickupLocation: booking.pickupLocation || "To be confirmed",
+    pickupMapUrl: mapUrl,
     dropoffLocation: booking.dropoffLocation || "To be confirmed",
     renterName: booking.renterName,
     renterPhone: booking.renterPhone,
@@ -85,7 +110,7 @@ async function sendBookingLifecycleEmails({
   extraMessage,
 }) {
   const recipients = await resolveEmailRecipients(booking);
-  const bookingView = buildBookingView(booking);
+  const bookingView = await buildBookingView(booking);
 
   const eventMap = {
     request_created: {
