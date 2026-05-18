@@ -47,15 +47,21 @@ RegisterController.registerVehicle = async (req, res) => {
       req?.files?.vehicleRC === undefined ? "" : req?.files?.vehicleRC;
     const PUC = req?.files?.PUC === undefined ? "" : req?.files?.PUC;
     console.log(vehiclePhoto);
+
+    // Check if user has a registered rental business
+    const rentalProfile = await registerRental.findOne({ userId: userId });
+
     if (
-      !name ||
-      !age ||
-      !address ||
-      !landmark ||
-      !pincode ||
-      !city ||
-      !state ||
-      !contact ||
+      (!rentalProfile && (
+        !name ||
+        !age ||
+        !address ||
+        !landmark ||
+        !pincode ||
+        !city ||
+        !state ||
+        !contact
+      )) ||
       !vehicleModel ||
       !returnDuration ||
       !rentalPrice ||
@@ -125,9 +131,6 @@ RegisterController.registerVehicle = async (req, res) => {
       autoCategory = '4-wheeler';
       autoSubcategory = subcategory || 'Sedan';
     }
-
-    // Check if user has a registered rental business
-    const rentalProfile = await registerRental.findOne({ userId: userId });
 
     let registerId = null;
     let rentalId = null;
@@ -208,7 +211,7 @@ RegisterController.registerVehicle = async (req, res) => {
 
   } catch (error) {
     console.log(error)
-    Helper.response("Falied", "Internal Server Error", error, res, 200);
+    Helper.response("Failed", "Internal Server Error", error, res, 500);
   }
 };
 RegisterController.registerRental = async (req, res) => {
