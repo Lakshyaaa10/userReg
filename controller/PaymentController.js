@@ -20,6 +20,9 @@ const { sendBookingLifecycleEmails } = require('../helpers/bookingEmailService')
 
 const PaymentController = {};
 
+const FRONTEND_URL = (process.env.FRONTEND_URL || 'https://www.zugo.co.in').replace(/\/$/, '');
+const BACKEND_URL = (process.env.BACKEND_URL || 'https://api.zugo.co.in').replace(/\/$/, '');
+
 function normalizeVehicleIdList(ids) {
     const seen = new Set();
     const normalized = [];
@@ -286,9 +289,9 @@ console.log('[Cashfree] ENV:', process.env.CASHFREE_ENV || 'SANDBOX (default)');
             },
             order_meta: {
                 return_url: bookingId
-                    ? `${process.env.FRONTEND_URL}/booking-confirmation?bookingId=${bookingId}&order_id={order_id}`
-                    : `${process.env.FRONTEND_URL}/booking-confirmation?order_id={order_id}`,
-                notify_url: `${process.env.BACKEND_URL}/payments/webhook`
+                    ? `${FRONTEND_URL}/booking-confirmation?bookingId=${bookingId}&order_id={order_id}`
+                    : `${FRONTEND_URL}/booking-confirmation?order_id={order_id}`,
+                notify_url: `${BACKEND_URL}/payments/webhook`
             },
             order_tags: { bookingId: bookingId ? String(bookingId) : '', pendingBooking: bookingData ? 'true' : 'false' }
         };
