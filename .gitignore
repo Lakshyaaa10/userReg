@@ -5,3 +5,4 @@ debug_cashfree.js
 test_cashfree.js
 .env
 uploads/
+firebase-backend.json
