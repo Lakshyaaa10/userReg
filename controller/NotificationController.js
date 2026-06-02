@@ -1,12 +1,14 @@
 const Helper = require('../Helper/Helper');
 const Notification = require('../Models/NotificationModel');
+const userModel = require('../Models/userModel');
 
 const NotificationController = {};
 
 // Get notifications for a user
 NotificationController.getNotifications = async (req, res) => {
     try {
-        const { userId, page = 1, limit = 20 } = req.query;
+        const { page = 1, limit = 20 } = req.query;
+        const userId = req.user?.id;
 
         if (!userId) {
             return Helper.response("Failed", "Missing userId", {}, res, 400);
@@ -41,7 +43,8 @@ NotificationController.getNotifications = async (req, res) => {
 // Mark notification as read
 NotificationController.markAsRead = async (req, res) => {
     try {
-        const { notificationId, userId } = req.body;
+        const { notificationId } = req.body;
+        const userId = req.user?.id;
 
         if (!notificationId || !userId) {
             return Helper.response("Failed", "Missing required fields", {}, res, 400);
@@ -68,7 +71,7 @@ NotificationController.markAsRead = async (req, res) => {
 // Mark all notifications as read
 NotificationController.markAllAsRead = async (req, res) => {
     try {
-        const { userId } = req.body;
+        const userId = req.user?.id;
 
         if (!userId) {
             return Helper.response("Failed", "Missing userId", {}, res, 400);
@@ -122,10 +125,30 @@ NotificationController.sendPushNotification = async (req, res) => {
     }
 };
 
+// Register FCM token for current user
+NotificationController.registerPushToken = async (req, res) => {
+    try {
+        const userId = req.user?.id;
+        const { pushToken } = req.body;
+
+        if (!userId || !pushToken) {
+            return Helper.response("Failed", "Missing pushToken", {}, res, 400);
+        }
+
+        await userModel.findByIdAndUpdate(userId, { pushToken });
+
+        Helper.response("Success", "Push token registered", {}, res, 200);
+    } catch (error) {
+        console.error('Register push token error:', error);
+        Helper.response("Failed", "Internal Server Error", error.message, res, 500);
+    }
+};
+
 // Delete notification
 NotificationController.deleteNotification = async (req, res) => {
     try {
-        const { notificationId, userId } = req.body;
+        const { notificationId } = req.body;
+        const userId = req.user?.id;
 
         if (!notificationId || !userId) {
             return Helper.response("Failed", "Missing required fields", {}, res, 400);
@@ -151,7 +174,7 @@ NotificationController.deleteNotification = async (req, res) => {
 // Get notification count
 NotificationController.getNotificationCount = async (req, res) => {
     try {
-        const { userId } = req.query;
+        const userId = req.user?.id;
 
         if (!userId) {
             return Helper.response("Failed", "Missing userId", {}, res, 400);

@@ -541,7 +541,7 @@ BookingController.cancelBooking = async (req, res) => {
             userId: booking.ownerId,
             title: "Booking Cancelled",
             message: `Booking for ${booking.vehicleModel} has been cancelled`,
-            type: "cancelled",
+            type: "booking_cancelled",
             relatedId: bookingId,
             relatedType: "booking"
         });

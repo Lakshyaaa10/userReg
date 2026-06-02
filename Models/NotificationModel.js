@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { dispatchNotification } = require('../helpers/realtimeNotifications');
 
 const notificationSchema = new mongoose.Schema({
     // User Reference
@@ -19,7 +20,7 @@ const notificationSchema = new mongoose.Schema({
     },
     type: {
         type: String,
-        enum: ['booking_request', 'booking_accepted', 'booking_rejected', 'payment_success', 'payment_failed', 'rto_assistance', 'vehicle_verification', 'general'],
+        enum: ['booking_request', 'booking_confirmed', 'booking_accepted', 'booking_rejected', 'booking_cancelled', 'payment_success', 'payment_failed', 'rto_assistance', 'vehicle_verification', 'general'],
         required: true
     },
     
@@ -73,6 +74,10 @@ const notificationSchema = new mongoose.Schema({
 notificationSchema.pre('save', function (next) {
     this.updatedAt = Date.now();
     next();
+});
+
+notificationSchema.post('save', function (doc) {
+    dispatchNotification(doc);
 });
 
 // Index for better query performance

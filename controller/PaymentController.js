@@ -237,7 +237,7 @@ async function createPaidBookingFromPayload(bookingData, paymentInfo = {}) {
             userId: vehicle.userId,
             title: "New Paid Booking",
             message: `${savedBooking.renterName} paid and booked your ${savedBooking.vehicleModel}`,
-            type: "booking_request",
+            type: "booking_confirmed",
             relatedId: savedBooking._id,
             relatedType: "booking"
         }).save();
@@ -552,7 +552,7 @@ PaymentController.createOfflineBooking = async (req, res) => {
                 userId: vehicle.userId,
                 title: "New Paid Booking",
                 message: `${renterName} paid and booked your ${newBooking.vehicleModel}`,
-                type: "booking_request",
+                type: "booking_confirmed",
                 relatedId: savedBooking._id,
                 relatedType: "booking"
             });

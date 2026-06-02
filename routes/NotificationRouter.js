@@ -22,6 +22,11 @@ notificationRouter.post('/send', (req, res, next) => {
     NotificationController.sendPushNotification(req, res, next);
 });
 
+// Register FCM token
+notificationRouter.post('/token', (req, res, next) => {
+    NotificationController.registerPushToken(req, res, next);
+});
+
 // Delete notification
 notificationRouter.delete('/', (req, res, next) => {
     NotificationController.deleteNotification(req, res, next);

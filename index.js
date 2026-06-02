@@ -1,4 +1,5 @@
 const express = require('express');
+const http = require('http');
 const path = require('path');
 const fs = require('fs');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
@@ -12,7 +13,9 @@ const multer = require('multer');
 const fileUpload = require("express-fileupload");
 const cors = require('cors');
 const upload = multer({ storage: multer.memoryStorage() });
+const { setSocketServer } = require('./helpers/realtimeNotifications');
 // connectDb()
+const server = http.createServer(app);
 
 // Enable CORS for all origins
 app.use(cors({
@@ -51,6 +54,34 @@ database.once("connected", () => {
 });
 app.use("/", routes)
 
-app.listen(process.env.PORT, "0.0.0.0", () => {
+try {
+  const { Server } = require('socket.io');
+  const io = new Server(server, {
+    cors: {
+      origin: '*',
+      methods: ['GET', 'POST']
+    }
+  });
+
+  io.on('connection', (socket) => {
+    const { userId } = socket.handshake.auth || socket.handshake.query || {};
+
+    if (userId) {
+      socket.join(`user:${userId}`);
+    }
+
+    socket.on('notification:join', (payload = {}) => {
+      if (payload.userId) {
+        socket.join(`user:${payload.userId}`);
+      }
+    });
+  });
+
+  setSocketServer(io);
+} catch (error) {
+  console.warn('socket.io not installed; realtime notifications disabled');
+}
+
+server.listen(process.env.PORT, "0.0.0.0", () => {
   console.log(`SERVER is listening at PORT ${process.env.PORT}`)
 })
