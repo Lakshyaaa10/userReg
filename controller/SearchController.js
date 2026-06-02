@@ -570,6 +570,7 @@ SearchController.getVehiclesByCategory = async (req, res) => {
             category = 'all',
             subcategory,
             city,
+            keyword,
             minPrice,
             maxPrice,
             latitude,
@@ -580,6 +581,9 @@ SearchController.getVehiclesByCategory = async (req, res) => {
             startDate,
             endDate
         } = req.query;
+
+        // Free-text search term (matches model, type, city, business/owner name)
+        const searchTerm = (keyword || '').toString().trim().toLowerCase();
 
         const skip = (page - 1) * limit;
         const requestedStart = startDate ? new Date(startDate) : null;
@@ -805,6 +809,28 @@ SearchController.getVehiclesByCategory = async (req, res) => {
             }
         }
 
+        // Free-text keyword filter (model, type, subcategory, city/state, business/owner name)
+        if (searchTerm) {
+            vehicles = vehicles.filter(vehicle => {
+                const haystack = [
+                    vehicle.vehicleModel,
+                    vehicle.VehicleModel,
+                    vehicle.vehicleType,
+                    vehicle.category,
+                    vehicle.subcategory,
+                    vehicle.City,
+                    vehicle.State,
+                    vehicle.businessName,
+                    vehicle.ownerName,
+                    vehicle.Name
+                ]
+                    .filter(Boolean)
+                    .join(' ')
+                    .toLowerCase();
+                return haystack.includes(searchTerm);
+            });
+        }
+
         // Calculate distance and filter by radius if location is provided
         if (latitude && longitude) {
             const userLat = parseFloat(latitude);
@@ -840,6 +866,7 @@ SearchController.getVehiclesByCategory = async (req, res) => {
             filters: {
                 category,
                 city,
+                keyword: keyword || null,
                 minPrice,
                 maxPrice
             },
