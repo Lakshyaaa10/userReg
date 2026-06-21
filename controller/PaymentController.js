@@ -98,6 +98,70 @@ async function resolveBookingVehicleByAnyId(vehicleId) {
     };
 }
 
+const ADVANCE_RATE = 0.10;
+const MS_PER_HOUR = 60 * 60 * 1000;
+const MS_PER_DAY = 24 * MS_PER_HOUR;
+
+function unitsFromDates(startDate, endDate, pricingType) {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+        throw new Error('Invalid booking dates');
+    }
+    const diff = end.getTime() - start.getTime();
+    if (diff < 0) throw new Error('Invalid booking dates');
+
+    if (pricingType === 'hourly') {
+        return { totalHours: Math.max(1, Math.round(diff / MS_PER_HOUR)), totalDays: 1 };
+    }
+    return { totalHours: 0, totalDays: Math.max(1, Math.round(diff / MS_PER_DAY) + 1) };
+}
+
+async function computeAuthoritativePricing(resolvedVehicle, bookingInput) {
+    const { startDate, endDate, pricingType = 'daily', couponCode, renterId } = bookingInput || {};
+    const vehicle = resolvedVehicle.vehicle;
+    const additionalVehicle = resolvedVehicle.additionalVehicle;
+
+    const dailyRate = Number(additionalVehicle?.rentalPrice ?? vehicle.rentalPrice ?? 0);
+    const hourlyRate = additionalVehicle ? 0 : Number(vehicle.hourlyPrice ?? 0);
+
+    if (pricingType === 'hourly' && hourlyRate <= 0) {
+        throw new Error('Hourly pricing not available for this vehicle');
+    }
+    if (pricingType !== 'hourly' && dailyRate <= 0) {
+        throw new Error('Vehicle pricing not configured');
+    }
+
+    const { totalDays, totalHours } = unitsFromDates(startDate, endDate, pricingType);
+    const totalAmount = pricingType === 'hourly'
+        ? totalHours * hourlyRate
+        : totalDays * dailyRate;
+
+    const couponCategory = additionalVehicle?.category || vehicle.category || vehicle.vehicleType;
+    let couponResult = { discount: 0, finalAmount: totalAmount, couponCode: '' };
+    if (couponCode) {
+        couponResult = await CouponController.applyCoupon(
+            couponCode, renterId, totalAmount, couponCategory
+        );
+    }
+
+    const finalAmount = Number(couponResult.finalAmount) || totalAmount;
+    const advanceAmount = Math.max(1, Math.round(finalAmount * ADVANCE_RATE));
+
+    return {
+        pricingType,
+        totalDays,
+        totalHours,
+        pricePerDay: pricingType === 'hourly' ? 0 : dailyRate,
+        pricePerHour: pricingType === 'hourly' ? hourlyRate : 0,
+        totalAmount,
+        discount: couponResult.discount || 0,
+        finalAmount,
+        couponCode: couponResult.couponCode || '',
+        advanceAmount
+    };
+}
+
 async function assertVehicleAvailable(bookingVehicleIds, startDate, endDate) {
     const start = new Date(startDate);
     const end = new Date(endDate);
@@ -157,16 +221,14 @@ async function createPaidBookingFromPayload(bookingData, paymentInfo = {}) {
         vehicleId,
         startDate,
         endDate,
-        totalDays,
-        pricePerDay,
-        pricePerHour = 0,
         pickupLocation,
         dropoffLocation,
         specialRequests,
-        couponCode
+        couponCode,
+        pricingType
     } = bookingData || {};
 
-    if (!renterId || !vehicleId || !startDate || !endDate || !totalDays || !(pricePerDay || pricePerHour)) {
+    if (!renterId || !vehicleId || !startDate || !endDate) {
         throw new Error('Missing required booking fields');
     }
 
@@ -188,16 +250,10 @@ async function createPaidBookingFromPayload(bookingData, paymentInfo = {}) {
     const displayVehicleModel = additionalVehicle?.model || vehicle.vehicleModel || 'Unknown';
     const displayVehicleType = additionalVehicle?.subcategory || vehicle.vehicleType || 'Unknown';
     const displayVehiclePhoto = additionalVehicle?.photo || vehicle.vehiclePhoto || '/static_bike.png';
-    const dailyPrice = pricePerDay || pricePerHour || 0;
-    const totalAmount = bookingData.totalAmount || (Number(totalDays) * Number(dailyPrice));
-    const couponCategory = additionalVehicle?.category || vehicle.category || vehicle.vehicleType;
 
-    let couponResult = { discount: 0, finalAmount: totalAmount, couponCode: '' };
-    if (couponCode) {
-        couponResult = await CouponController.applyCoupon(
-            couponCode, renterId, totalAmount, couponCategory
-        );
-    }
+    const pricing = await computeAuthoritativePricing(resolvedVehicle, {
+        startDate, endDate, pricingType, couponCode, renterId
+    });
 
     const booking = new Booking({
         renterId,
@@ -213,12 +269,12 @@ async function createPaidBookingFromPayload(bookingData, paymentInfo = {}) {
         vehiclePhoto: displayVehiclePhoto,
         startDate: new Date(startDate),
         endDate: new Date(endDate),
-        totalDays,
-        pricePerDay: dailyPrice,
-        totalAmount,
-        couponCode: couponResult.couponCode,
-        discountAmount: couponResult.discount,
-        finalAmount: couponResult.finalAmount,
+        totalDays: pricing.totalDays,
+        pricePerDay: pricing.pricePerDay || pricing.pricePerHour,
+        totalAmount: pricing.totalAmount,
+        couponCode: pricing.couponCode,
+        discountAmount: pricing.discount,
+        finalAmount: pricing.finalAmount,
         pickupLocation: pickupLocation || 'To be determined',
         dropoffLocation: dropoffLocation || 'To be determined',
         specialRequests: specialRequests || '',
@@ -249,21 +305,27 @@ async function createPaidBookingFromPayload(bookingData, paymentInfo = {}) {
 }
 
 PaymentController.createOrder = async (req, res) => {
-    console.log('[Cashfree] APP_ID:', process.env.CASHFREE_APP_ID ? 'SET ✓' : 'MISSING ✗');
-console.log('[Cashfree] SECRET:', process.env.CASHFREE_SECRET_KEY ? 'SET ✓' : 'MISSING ✗');
-console.log('[Cashfree] ENV:', process.env.CASHFREE_ENV || 'SANDBOX (default)');
     try {
         const {
-            amount, currency = 'INR', bookingId, bookingData,
+            currency = 'INR', bookingId, bookingData,
             customerId, customerPhone, customerEmail, customerName
         } = req.body;
 
-        if (!amount) return Helper.response("Failed", "Amount is required", {}, res, 400);
         if (!bookingId && !bookingData) {
             return Helper.response("Failed", "Booking data is required", {}, res, 400);
         }
 
+        const phoneDigits = String(customerPhone || '').replace(/\D/g, '');
+        const emailLower = String(customerEmail || '').toLowerCase();
+        if (phoneDigits.length < 10)
+            return Helper.response("Failed", "Invalid Phone Number", {}, res, 400);
+        if (!emailLower.includes('@'))
+            return Helper.response("Failed", "Invalid Email", {}, res, 400);
+
         let orderBookingRef = bookingId;
+        let orderAmount;
+        let authoritativePricing = null;
+
         if (bookingData) {
             const resolvedVehicle = await resolveBookingVehicleByAnyId(bookingData.vehicleId);
             if (!resolvedVehicle) {
@@ -274,17 +336,40 @@ console.log('[Cashfree] ENV:', process.env.CASHFREE_ENV || 'SANDBOX (default)');
                 bookingData.startDate,
                 bookingData.endDate
             );
+
+            authoritativePricing = await computeAuthoritativePricing(resolvedVehicle, {
+                startDate: bookingData.startDate,
+                endDate: bookingData.endDate,
+                pricingType: bookingData.pricingType,
+                couponCode: bookingData.couponCode,
+                renterId: bookingData.renterId
+            });
+
+            orderAmount = authoritativePricing.advanceAmount;
             orderBookingRef = new mongoose.Types.ObjectId().toString();
+        } else {
+            const existingBooking = await Booking.findById(bookingId);
+            if (!existingBooking) {
+                return Helper.response("Failed", "Booking not found", {}, res, 404);
+            }
+            if (existingBooking.paymentStatus === 'paid') {
+                return Helper.response("Failed", "Booking already paid", {}, res, 400);
+            }
+            const baseAmount = Number(existingBooking.finalAmount ?? existingBooking.totalAmount) || 0;
+            if (baseAmount <= 0) {
+                return Helper.response("Failed", "Booking amount not set", {}, res, 400);
+            }
+            orderAmount = Math.max(1, Math.round(baseAmount * ADVANCE_RATE));
         }
 
         const orderRequest = {
-            order_amount: parseFloat(amount),
+            order_amount: orderAmount,
             order_currency: currency,
             order_id: `order_${orderBookingRef}_${Date.now()}`,
             customer_details: {
                 customer_id: String(customerId || 'guest'),
-                customer_phone: String(customerPhone).replace(/\D/g, '') || '9999999999',
-                customer_email: String(customerEmail || 'guest@example.com').toLowerCase(),
+                customer_phone: phoneDigits,
+                customer_email: emailLower,
                 customer_name: String(customerName || 'Guest').substring(0, 50)
             },
             order_meta: {
@@ -296,20 +381,28 @@ console.log('[Cashfree] ENV:', process.env.CASHFREE_ENV || 'SANDBOX (default)');
             order_tags: { bookingId: bookingId ? String(bookingId) : '', pendingBooking: bookingData ? 'true' : 'false' }
         };
 
-        if (orderRequest.customer_details.customer_phone.length < 10)
-            return Helper.response("Failed", "Invalid Phone Number", {}, res, 400);
-        if (!orderRequest.customer_details.customer_email.includes('@'))
-            return Helper.response("Failed", "Invalid Email", {}, res, 400);
-
-        // ✅ Called on instance, no API version string
         const response = await cashfree.PGCreateOrder(orderRequest);
         const order = response.data;
 
         if (bookingData) {
+            const sanitizedBookingData = {
+                ...bookingData,
+                pricingType: authoritativePricing.pricingType,
+                totalDays: authoritativePricing.totalDays,
+                totalHours: authoritativePricing.totalHours,
+                pricePerDay: authoritativePricing.pricePerDay,
+                pricePerHour: authoritativePricing.pricePerHour,
+                totalAmount: authoritativePricing.totalAmount,
+                discountAmount: authoritativePricing.discount,
+                finalAmount: authoritativePricing.finalAmount,
+                couponCode: authoritativePricing.couponCode,
+                advanceAmount: authoritativePricing.advanceAmount
+            };
+
             await PendingBookingPayment.create({
                 orderId: order.order_id,
-                bookingData,
-                amount: parseFloat(amount),
+                bookingData: sanitizedBookingData,
+                amount: orderAmount,
                 currency,
                 customerId: mongoose.Types.ObjectId.isValid(customerId) ? customerId : null
             });
@@ -318,7 +411,12 @@ console.log('[Cashfree] ENV:', process.env.CASHFREE_ENV || 'SANDBOX (default)');
         Helper.response("Success", "Order created successfully", {
             order_id: order.order_id,
             payment_session_id: order.payment_session_id,
-            bookingId: bookingId || null
+            cf_environment: process.env.CASHFREE_ENV === 'PRODUCTION' ? 'PRODUCTION' : 'SANDBOX',
+            bookingId: bookingId || null,
+            advanceAmount: orderAmount,
+            totalAmount: authoritativePricing?.totalAmount,
+            finalAmount: authoritativePricing?.finalAmount,
+            discountAmount: authoritativePricing?.discount
         }, res, 200);
 
     } catch (error) {
